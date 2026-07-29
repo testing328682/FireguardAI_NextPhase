@@ -1467,7 +1467,7 @@ export function SecurityAnalytics() {
               protection_trend: protT,
             });
           }).catch(() => {}),
-        api.dashboardCharts(rangeDays, customerId || undefined, dids).then((c) => {
+        api.dashboardCharts(rangeDays, customerId || undefined, dids, localToday(), localTzOffset()).then((c) => {
           if (!c || hidden.length === 0) { setCharts(c); return; }
           const dist = { ...c.severity_distribution };
           let removed = 0;

@@ -478,8 +478,8 @@ export const api = {
   trends: () => json<Trends>("/analytics/trends"),
   executiveSummary: (rangeDays: number = 30, customerId?: string, deviceIds?: string, localToday?: string, tzOffset?: number) =>
     json<ExecutiveSummary>(`/analytics/executive-summary?range_days=${rangeDays}${customerId ? `&customer_id=${customerId}` : ""}${deviceIds ? `&device_ids=${deviceIds}` : ""}${localToday ? `&local_today=${localToday}` : ""}${tzOffset !== undefined ? `&tz_offset=${tzOffset}` : ""}`),
-  dashboardCharts: (rangeDays: number = 30, customerId?: string, deviceIds?: string) =>
-    json<DashboardCharts>(`/analytics/dashboard-charts?range_days=${rangeDays}&all_firmware=1&all_findings=1${customerId ? `&customer_id=${customerId}` : ""}${deviceIds ? `&device_ids=${deviceIds}` : ""}`),
+  dashboardCharts: (rangeDays: number = 30, customerId?: string, deviceIds?: string, localToday?: string, tzOffset?: number) =>
+    json<DashboardCharts>(`/analytics/dashboard-charts?range_days=${rangeDays}&all_firmware=1&all_findings=1${customerId ? `&customer_id=${customerId}` : ""}${deviceIds ? `&device_ids=${deviceIds}` : ""}${localToday ? `&local_today=${localToday}` : ""}${tzOffset !== undefined ? `&tz_offset=${tzOffset}` : ""}`),
   riskTrend: (rangeDays: number = 30, customerId?: string, deviceIds?: string, localToday?: string, tzOffset?: number) =>
     json<RiskTrend>(`/analytics/risk-trend?range_days=${rangeDays}${customerId ? `&customer_id=${customerId}` : ""}${deviceIds ? `&device_ids=${deviceIds}` : ""}${localToday ? `&local_today=${localToday}` : ""}${tzOffset !== undefined ? `&tz_offset=${tzOffset}` : ""}`),
   operationalSummary: (rangeDays: number = 30, customerId?: string, deviceIds?: string) =>

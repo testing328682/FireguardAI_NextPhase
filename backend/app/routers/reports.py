@@ -104,6 +104,10 @@ def technical_report(analysis_id: str,
             "last_seen": live.get("last_seen"),
         })
 
+    # Sort findings by severity: Critical → High → Medium → Low → Info
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    enriched_findings.sort(key=lambda f: sev_order.get((f.get("severity") or "").lower(), 9))
+
     enriched = dict(result)
     enriched["findings"] = enriched_findings
     enriched["device_id"] = device_id

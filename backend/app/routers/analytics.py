@@ -516,6 +516,8 @@ def dashboard_charts(
     device_ids: str | None = None,
     all_firmware: bool = False,
     all_findings: bool = False,
+    local_today: str | None = None,
+    tz_offset: int = 0,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -523,10 +525,14 @@ def dashboard_charts(
 
     Single endpoint returning score trend, severity distribution,
     grade distribution, firmware distribution, and top findings.
+
+    ``local_today`` / ``tz_offset`` define the user's day boundaries
+    for the score trend window; without them the server's UTC day is used.
     """
     org_id = user.organization_id
-    now = datetime.now(timezone.utc)
-    since = now - timedelta(days=range_days)
+    end_date = _parse_local_today(local_today)
+    since_dt = datetime(end_date.year, end_date.month, end_date.day, tzinfo=timezone.utc)
+    since = since_dt - timedelta(days=range_days)
     dids = [d.strip() for d in device_ids.split(",") if d.strip()] if device_ids else None
     device_ids = _device_filter(db, org_id, customer_id, dids)
 

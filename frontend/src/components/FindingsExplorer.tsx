@@ -106,12 +106,19 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
   const [deviceRiskTrend, setDeviceRiskTrend] = useState<RiskTrend | null>(null);
   const [deviceCharts, setDeviceCharts] = useState<DashboardCharts | null>(null);
   const [deviceRangeDays, setDeviceRangeDays] = useState(30);
+  const localToday = useCallback(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  }, []);
+  const localTzOffset = useCallback(() => new Date().getTimezoneOffset(), []);
   const refreshDeviceData = useCallback(() => {
     if (!backRoute || !deviceId) return;
-    api.executiveSummary(deviceRangeDays, undefined, deviceId).then(setDeviceSummary).catch(() => setDeviceSummary(null));
-    api.riskTrend(deviceRangeDays, undefined, deviceId).then(setDeviceRiskTrend).catch(() => setDeviceRiskTrend(null));
-    api.dashboardCharts(deviceRangeDays, undefined, deviceId).then(setDeviceCharts).catch(() => setDeviceCharts(null));
-  }, [backRoute, deviceId, deviceRangeDays]);
+    const lt = localToday();
+    const tzo = localTzOffset();
+    api.executiveSummary(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceSummary).catch(() => setDeviceSummary(null));
+    api.riskTrend(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceRiskTrend).catch(() => setDeviceRiskTrend(null));
+    api.dashboardCharts(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceCharts).catch(() => setDeviceCharts(null));
+  }, [backRoute, deviceId, deviceRangeDays, localToday, localTzOffset]);
   useEffect(() => {
     if (backRoute && deviceId) {
       refreshDeviceData();
@@ -475,6 +482,9 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     }
     const hidden = effHidden;
     if (hidden.length > 0) r = r.filter((row) => !hidden.includes(row.severity));
+    // Sort by severity: Critical → High → Medium → Low → Info
+    const sevOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+    r = [...r].sort((a, b) => (sevOrder[(a.severity || "").toLowerCase()] ?? 9) - (sevOrder[(b.severity || "").toLowerCase()] ?? 9));
     return r;
   }, [allAnalysisRows, filters.severity, filters.status, filters.category, filters.q, orgHidden, devHidden]);
 
@@ -1253,8 +1263,8 @@ function FullComparisonTable({ findings1, findings2, label1, label2, summary, on
       in1: !!f1, in2: !!f2,
     };
   }).sort((a, b) => {
-    const o: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4 };
-    return (o[a.severity] ?? 9) - (o[b.severity] ?? 9);
+    const o: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+    return (o[(a.severity || "").toLowerCase()] ?? 9) - (o[(b.severity || "").toLowerCase()] ?? 9);
   });
 
   return (
@@ -1536,8 +1546,8 @@ function SideBySideTable({ newFindings, resolvedFindings }: {
     }
   }
   const rows = [...allKeys].map((k) => byKey[k]).sort((a, b) => {
-    const o = { Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4 };
-    return (o[a.severity as keyof typeof o] ?? 9) - (o[b.severity as keyof typeof o] ?? 9);
+    const o: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+    return (o[(a.severity || "").toLowerCase()] ?? 9) - (o[(b.severity || "").toLowerCase()] ?? 9);
   });
 
   if (rows.length === 0) return null;

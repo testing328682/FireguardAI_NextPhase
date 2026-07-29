@@ -464,7 +464,7 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
             Paragraph(f.get("exploitability", "-"), st["cell"]),
         ])
 
-    col_widths_idx = [0.28 * inch, 0.5 * inch, 0.65 * inch, 0.9 * inch, 2.0 * inch, 1.5 * inch, 0.55 * inch]
+    col_widths_idx = [0.28 * inch, 0.68 * inch, 0.55 * inch, 0.9 * inch, 1.94 * inch, 1.5 * inch, 0.55 * inch]
     t_idx = Table(data_rows, colWidths=col_widths_idx, repeatRows=1)
     t_idx.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _PALETTE["ink"]),
