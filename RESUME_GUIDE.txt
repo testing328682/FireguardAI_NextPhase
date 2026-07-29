@@ -1,0 +1,205 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                   FIREWALLGUARD AI — RESUME GUIDE                        ║
+║                   Last updated: 23 June 2026                             ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+1. START THE PROJECT
+────────────────────
+Open PowerShell and run:
+
+    cd C:\Users\srather\Documents\codewhale
+
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose up -d
+
+Wait ~15 seconds for all containers to show "Healthy" or "Started".
+Check status with:
+
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose ps
+
+You should see 5 containers: db, redis, api, worker, web — all running.
+
+If any container is missing, rebuild:
+
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose down
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose up -d --build
+
+Then seed the database and rules:
+
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose exec api python -m app.bootstrap
+
+
+2. ACCESS THE APP
+─────────────────
+Open your browser and go to:
+
+    http://localhost:8080
+
+This is the production build served by nginx.  Port 5173 (Vite dev server)
+is unreliable on Windows Docker — always use port 8080.
+
+
+3. LOGIN CREDENTIALS
+────────────────────
+Superadmin (platform operator — can manage system rules, generations, etc.):
+
+    Email:    tm328682@gmail.com
+    Password: TCPip@00
+
+This account has is_superadmin = true in the database.
+
+If account gets locked (5 failed attempts = 15 min lockout), unlock it:
+
+    & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose exec db psql -U fgai -d fgai -c "UPDATE users SET locked_until = NULL, failed_login_count = 0 WHERE email = 'tm328682@gmail.com';"
+
+
+4. COMMON COMMANDS
+──────────────────
+Rebuild after code changes:
+    docker compose down
+    docker compose up -d --build
+
+Rebuild frontend only (faster):
+    docker compose build --no-cache web
+    docker compose up -d web
+
+Rebuild API only:
+    docker compose build --no-cache api
+    docker compose up -d api
+
+View API logs:
+    docker compose logs api --tail 30
+
+View all logs:
+    docker compose logs --tail 50
+
+Re-seed system rules:
+    docker compose exec api python -m app.bootstrap
+
+Run backend tests:
+    docker compose exec api python -m pytest tests/ -v
+
+Apply Alembic migrations:
+    docker compose exec api alembic upgrade heads
+
+Reset everything (WARNING: deletes database):
+    docker compose down -v
+    docker compose up -d --build
+    docker compose exec api alembic upgrade heads
+    docker compose exec api python -m app.bootstrap --seed --superadmin --email tm328682@gmail.com --password "TCPip@00"
+
+Add missing columns directly (if migration fails):
+    docker compose exec db psql -U fgai -d fgai -c "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_analysis_at TIMESTAMPTZ; ALTER TABLE devices ADD COLUMN IF NOT EXISTS critical_count INT DEFAULT 0; ALTER TABLE devices ADD COLUMN IF NOT EXISTS high_count INT DEFAULT 0; ALTER TABLE devices ADD COLUMN IF NOT EXISTS medium_count INT DEFAULT 0; ALTER TABLE devices ADD COLUMN IF NOT EXISTS low_count INT DEFAULT 0; ALTER TABLE organizations ADD COLUMN IF NOT EXISTS hidden_severities JSONB DEFAULT '[]'::jsonb; ALTER TABLE devices ADD COLUMN IF NOT EXISTS hidden_severities JSONB DEFAULT '[]'::jsonb;"
+
+
+5. PROJECT STRUCTURE
+────────────────────
+backend/
+  firewallguard/         Analysis engine (TSR parser, rule catalog, scoring)
+    tsr/                 TSR reader + parser (60+ sections)
+    rules/               ~68 system rules + rule engine
+    intelligence/        PSIRT/CVE matching, attack-path correlation
+    analytics/           Scoring (0-100), grading (A-F), config drift
+    report/              PDF (ReportLab), CSV, JSON reports
+    pipeline.py          Orchestrator
+  app/                   FastAPI service layer
+    models.py            Database models (Organization, Device with configured flag + hidden_severities)
+    security.py          JWT, bcrypt, RBAC, MFA, API tokens
+    rule_engine.py       CEL evaluator, system rule defaults, firmware checks
+    tasks.py             Celery workers (scan, pull, PSIRT refresh)
+    findings_sync.py     Persist pipeline findings; auto-reopen/resolve lifecycle
+    routers/             API endpoints (auth, devices, findings, rules, etc.)
+  alembic/versions/      Migrations including device configured flag + missing columns + hidden_severities
+
+frontend/
+  src/App.tsx            Main app shell with sidebar, topbar, routing (+ /devices/:id route)
+  src/components/
+    Devices.tsx          Device list with registration modal, Configure modal, row click to detail
+    DeviceDetail.tsx     Device info, TSR history, delete TSR, upload new TSR, Go to Findings
+    FindingsExplorer.tsx Device-centric findings: device list → device-specific view with TSR selector,
+                         comparison modal, visibility settings, category filter, clickable KPIs
+    UploadPanel.tsx      TSR upload (accepts pre-registered device_id)
+    Rules.tsx            Rule library with modal-based creation + category dropdown
+  src/lib/               api.ts (client), types.ts, router.ts, ui.ts
+  src/index.css          Design system (CSS variables, utility classes)
+
+
+6. KEY FEATURES — HOW TO USE
+─────────────────────────────
+
+DEVICE ONBOARDING (two-step):
+    Devices → + Add Device (modal) → enter name + serial + confirm serial → Register
+    Device appears as "Not Configured" → click ⋯ → Configure…
+    Choose: Upload TSR or Connect via API → serial validated → device becomes Configured
+
+DEVICE DETAILS:
+    Click any configured device row → Device Details page
+    Shows: name, serial, model, firmware, status, TSR count, date added, last analysis, score/grade
+    TSR History table with delete per TSR
+    "Go to Findings" button, "Upload New TSR" button
+
+FINDINGS (device-centric):
+    Findings page → shows device list with per-device metrics (score, severity counts, open, last scan)
+    Click a device → device-specific view with:
+      - TSR dropdown (select which analysis to view, defaults to latest)
+      - Export PDF (Technical Report) + CSV
+      - Compare Findings button (if ≥2 TSRs)
+      - Configure Filter button (visibility settings)
+      - Clickable KPI cards (click severity/status to filter findings)
+      - Category column + filter
+      - Full findings table with bulk actions
+
+TSR COMPARISON:
+    Compare Findings → pick Baseline + Newer TSR → Compare
+    Summary: New/Resolved/Config Changes/Score Δ counts
+    Detailed Report: side-by-side table showing ALL findings from both TSRs
+      with severity, category, and status per TSR
+    Print/PDF button for browser-native PDF export
+
+VISIBILITY SETTINGS:
+    Main findings page → Configure Filter (global): per-severity On/Off toggles
+    Device findings → Configure Filter (device): per-severity toggles with "Inherit from Global" checkbox
+    Device settings override global; when inheriting, toggles are disabled
+
+
+7. CODEWHALE SESSION — HOW TO RESUME
+─────────────────────────────────────
+CodeWhale should automatically recognise this project when you open it again.
+The CLAUDE.md file contains the full project context that CodeWhale reads.
+
+If CodeWhale opens a fresh session:
+    1. Make sure you're in the project directory (C:\Users\srather\Documents\codewhale)
+    2. CodeWhale will read CLAUDE.md, FIREWALLGUARD-AI-SPEC.md, and PROJECT_SUMMARY.txt
+    3. Ask: "I'm resuming work on FirewallGuard AI — please read the project files"
+
+To pick up where you left off:
+    Tell CodeWhale: "Read PROJECT_SUMMARY.txt and CLAUDE.md, then continue
+    from where we left off."
+
+
+8. COMMON ISSUES & FIXES
+─────────────────────────
+"Internal Server Error" on any page:
+    → Database schema may be stale (missing columns)
+    → Run: docker compose exec api alembic upgrade heads
+    → Or add columns manually via psql (see section 4)
+
+No devices showing / counts show 0:
+    → Register and configure a device first
+    → Upload a TSR to trigger counts population
+
+Findings counts don't match between pages:
+    → The findings page now only counts active-status findings (open/acknowledged/in_progress)
+    → The devices page queries live finding counts
+
+CEL conditions not working:
+    → String values with spaces need quotes: "SonicOS 7.0.1" not SonicOS 7.0.1
+
+Docker on Windows (docker not found):
+    → Use full path: C:\Program Files\Docker\Docker\resources\bin\docker.exe
+
+Port 8000 not responding:
+    → Windows Docker networking quirk — use port 8080 (nginx) instead
+
+Alembic "Multiple head revisions" error:
+    → Use: docker compose exec api alembic upgrade heads
+    → Or target specific revision: docker compose exec api alembic upgrade c3d4e5f6a7b8

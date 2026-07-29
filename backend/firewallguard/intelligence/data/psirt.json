@@ -1,0 +1,65 @@
+{
+  "source": "Curated from SonicWall PSIRT (psirt.global.sonicwall.com) and NVD.",
+  "last_refreshed": "2026-06-11",
+  "disclaimer": "Advisory data curated from the SonicWall PSIRT portal and NVD as of the last_refreshed date. SonicWall publishes new advisories regularly; refresh this dataset from https://psirt.global.sonicwall.com/vuln-list before relying on it for compliance or remediation decisions.",
+  "advisories": [
+    {
+      "advisory_id": "SNWLID-2026-0004",
+      "title": "SonicOS affected by multiple vulnerabilities (auth bypass, path traversal, DoS)",
+      "cve": ["CVE-2026-0204", "CVE-2026-0205", "CVE-2026-0206"],
+      "cvss": 8.0,
+      "severity": "High",
+      "generations": ["Gen6", "Gen7", "Gen8"],
+      "affected_lo": "7.0.0-0",
+      "affected_hi": "7.3.1-7013",
+      "fixed_in": "7.3.1-7014",
+      "published": "2026-04-29",
+      "summary": "Improper access control (CVE-2026-0204, CVSS 8.0, CWE-1390/306) may allow an unauthenticated attacker on an adjacent network to reach management-interface functions without authentication; combined with a post-auth path traversal (CVE-2026-0205, CVSS 6.8) and a post-auth stack-based buffer overflow DoS (CVE-2026-0206). Affects Gen6/Gen7/Gen8.",
+      "reference": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2026-0004"
+    },
+    {
+      "advisory_id": "SNWLID-2025-0016",
+      "title": "SonicOS SSLVPN Pre-Auth Stack-Based Buffer Overflow Vulnerability",
+      "cve": ["CVE-2025-40601"],
+      "cvss": 7.5,
+      "severity": "High",
+      "generations": ["Gen7", "Gen8"],
+      "affected_lo": "7.1.1-7040",
+      "affected_hi": "7.3.0-7012",
+      "fixed_in": "7.3.1-7013",
+      "published": "2025-11-19",
+      "summary": "A pre-authentication stack-based buffer overflow (CWE-121) in the SonicOS SSLVPN service lets a remote unauthenticated attacker crash the firewall, causing denial of service. Only devices with the SSLVPN interface/service enabled are exposed.",
+      "reference": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2025-0016"
+    },
+    {
+      "advisory_id": "SNWLID-2026-0001",
+      "title": "SonicOS multiple post-authentication vulnerabilities",
+      "cve": ["CVE-2026-0399", "CVE-2026-0400", "CVE-2026-0401", "CVE-2026-0402", "CVE-2026-3439"],
+      "cvss": 4.9,
+      "severity": "Medium",
+      "generations": ["Gen7", "Gen8"],
+      "affected_lo": "7.0.0-0",
+      "affected_hi": "7.3.1-7013",
+      "fixed_in": "7.3.1-7014",
+      "published": "2026-02-24",
+      "summary": "A set of post-authentication vulnerabilities in SonicOS that require valid credentials to exploit; aggregate maximum CVSS 4.9 (Medium).",
+      "reference": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2026-0001"
+    }
+  ],
+  "eol": {
+    "NSA 2700": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "NSA 3700": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "NSA 4700": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "NSA 5700": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "NSA 6700": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "TZ270": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "TZ370": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "TZ470": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "TZ570": {"status": "supported", "note": "Gen7 platform, currently supported."},
+    "TZ670": {"status": "supported", "note": "Gen7 platform, currently supported."}
+  },
+  "latest_known_firmware": {
+    "Gen7": "7.3.1-7014",
+    "note": "SonicOS 7.3.1-7013 was the maintenance release adding Credential Auditor; confirm the current build on the SonicWall download portal."
+  }
+}

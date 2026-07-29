@@ -1,0 +1,710 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║              FIREWALLGUARD AI — QA TEST SCENARIOS                        ║
+║              Last updated: 28 June 2026                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════
+1. AUTHENTICATION & SESSION
+═══════════════════════════════════════════════════════════════════════════
+
+1.1  Login with valid credentials
+     Enter valid email + password → Login
+     Expected: Redirect to Dashboard
+
+1.2  Login with invalid credentials
+     Enter wrong password
+     Expected: "Invalid email or password"
+
+1.3  Account lockout
+     Fail login 5 times consecutively
+     Expected: Account locked for 15 minutes; message displayed
+
+1.4  Session persistence
+     Login → close tab → reopen http://localhost:8080
+     Expected: Still logged in
+
+1.5  Logout
+     Click profile → Sign Out
+     Expected: Redirected to login; can't access pages directly
+
+1.6  Sign up new user
+     Click "Create account" → fill form → submit
+     Expected: Account created; auto-assigned to new org with default customer
+
+1.7  MFA enrollment and verification
+     Enable MFA in profile → login → enter TOTP code
+     Expected: MFA flow works end-to-end
+
+1.8  Role-based access
+     Login as viewer → try to register a device
+     Expected: Restricted; only analyst+ can register
+
+
+═══════════════════════════════════════════════════════════════════════════
+2. DEVICE REGISTRATION
+═══════════════════════════════════════════════════════════════════════════
+
+2.1  Register device on Free plan
+     Devices → + Add Device → enter name, serial, confirm serial → Register
+     Expected: Device created, "Not Configured" badge shown
+
+2.2  Register with license bundle selection
+     On Professional/MSP plan → Register → select a license bundle
+     Expected: Bundle dropdown shows all frequencies with remaining counts
+
+2.3  Register with mismatched serial confirmation
+     Enter serial "ABC" but confirm "XYZ" → Register
+     Expected: Error "Serial numbers do not match"
+
+2.4  Register duplicate serial
+     Register device with serial already in org
+     Expected: 409 Conflict — "A device with serial '…' already exists"
+
+2.5  Register when no licenses available
+     Purchase 0 licenses → try to register device
+     Expected: "No licenses available" message with link to purchase page
+
+2.6  Register without required fields
+     Leave name or serial blank → Register
+     Expected: Validation error shown
+
+2.7  Register device under specific customer
+     Select a customer from dropdown → Register
+     Expected: Device assigned to that customer
+
+2.8  Register from Customer Detail page
+     Customers → click customer → Register Device
+     Expected: Customer pre-selected in registration form
+
+
+═══════════════════════════════════════════════════════════════════════════
+3. DEVICE CONFIGURATION (TSR Upload & API Connect)
+═══════════════════════════════════════════════════════════════════════════
+
+3.1  Configure via TSR upload
+     Devices → ⋯ → Configure → Upload TSR tab → drop .wri file
+     Expected: TSR uploaded, analysis queued, device becomes "Configured"
+
+3.2  TSR upload with wrong serial
+     Upload TSR whose serial does not match registered device
+     Expected: Error "Serial mismatch"
+
+3.3  Configure via API Connect
+     Configure → Connect via API → enter hostname, port, credentials
+     Expected: Connection tested, credentials stored, TSR pulled and analyzed
+
+3.4  API Connect with wrong credentials
+     Enter wrong username or password
+     Expected: Connection status "failed" with error message
+
+3.5  API Connect serial validation
+     API probed serial differs from registered serial
+     Expected: Returns "failed" with serial mismatch message
+
+3.6  Upload TSR from Device Detail page
+     Device Detail → Upload New TSR
+     Expected: Upload accepted; new row in TSR history table
+
+3.7  Delete TSR from Device Detail
+     Device Detail → click × on a TSR row → confirm
+     Expected: TSR, analysis, and findings cascade-deleted
+
+
+═══════════════════════════════════════════════════════════════════════════
+4. DEVICE MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════
+
+4.1  Device list search
+     Devices page → type partial name/model/serial in search bar
+     Expected: List filters in real-time
+
+4.2  Customer filter (MSP only)
+     Devices → select a customer from dropdown
+     Expected: Only that customer's devices shown
+
+4.3  Configured / Not Configured badges
+     View device list
+     Expected: Green "Configured" / Yellow "Not Configured" badges
+
+4.4  Device posture bar
+     View configured devices in list
+     Expected: Score bar + grade visible (A-F)
+
+4.5  Device severity counts
+     View configured device in list
+     Expected: Critical/High/Medium/Low dot counts correct
+
+4.6  Device menu — Rename
+     ⋯ → Rename → enter new name
+     Expected: Name updates immediately
+
+4.7  Device menu — Delete
+     ⋯ → Delete → confirm
+     Expected: Device removed from list
+
+4.8  Device menu — View Findings
+     ⋯ → View Findings (configured device)
+     Expected: Navigates to device-specific findings
+
+4.9  Device menu — View Details
+     ⋯ → View Details
+     Expected: Navigates to Device Detail page
+
+4.10 Device menu — Pull Now (API devices only)
+     ⋯ → Pull Now
+     Expected: Triggers immediate API pull and re-analysis
+
+4.11 Device Detail page
+     Click configured device row → Device Detail
+     Expected: Info card shows all fields; TSR history table with dates, scores
+
+4.12 Go to Findings from Device Detail
+     Device Detail → "Go to Findings" button
+     Expected: Navigates to findings filtered for that device
+
+
+═══════════════════════════════════════════════════════════════════════════
+5. FINDINGS — MAIN PAGE (Device List View)
+═══════════════════════════════════════════════════════════════════════════
+
+5.1  Device list shows all configured devices
+     Open Findings page
+     Expected: All configured devices with score, severity counts, open, last scan
+
+5.2  KPI summary cards correct
+     Check KPI strip at top
+     Expected: Devices, Critical, High, Medium, Low, In Progress, Resolved
+              counts match actual data
+
+5.3  KPI card click opens Quick Findings modal
+     Click "Critical" KPI card
+     Expected: Modal shows all Critical findings across devices
+
+5.4  KPI card toggle closes modal
+     Click "Critical" card again
+     Expected: Modal closes
+
+5.5  Customer filter filters KPIs (MSP)
+     Select a customer from header dropdown
+     Expected: KPI cards and device list update to that customer only
+
+5.6  Search filters device list
+     Type in search bar
+     Expected: Only matching devices by name, model, serial
+
+5.7  Click device row opens device findings
+     Click a configured device row
+     Expected: Opens device-specific findings view
+
+5.8  Configure Filter button (visibility)
+     Click "Configure Filter"
+     Expected: Modal with per-severity toggle switches for global settings
+
+
+═══════════════════════════════════════════════════════════════════════════
+6. FINDINGS — DEVICE-SPECIFIC VIEW
+═══════════════════════════════════════════════════════════════════════════
+
+6.1  TSR selector shows all completed analyses
+     Open device findings → check TSR dropdown
+     Expected: All completed analyses with date, grade, finding count
+
+6.2  TSR selector defaults to latest
+     Open device findings
+     Expected: Latest completed analysis auto-selected
+
+6.3  Switch TSR changes findings
+     Select an older TSR from dropdown
+     Expected: Findings table updates to that snapshot's data
+
+6.4  KPI cards show correct totals
+     Check KPI strip on device view
+     Expected: Score, grade, severity counts, status counts match selected TSR
+
+6.5  KPI cards show active counts only
+     Verify that resolved findings do not inflate severity counts
+     Expected: Only open/acknowledged/in_progress findings counted in severity
+
+
+═══════════════════════════════════════════════════════════════════════════
+7. FINDINGS — MULTI-SELECT FILTERING (Device-Specific View)
+═══════════════════════════════════════════════════════════════════════════
+
+7.1  Single severity filter
+     Open Severity dropdown → check "High"
+     Expected: Table shows only High findings; KPI cards unchanged
+
+7.2  Multi-select severity (OR logic within type)
+     Check "High" + "Critical" in severity dropdown
+     Expected: Table shows both High AND Critical findings
+
+7.3  Uncheck all severities
+     Uncheck all in severity dropdown
+     Expected: Shows "All severities" — no filter applied
+
+7.4  Status filter (multi-select)
+     Check "Open" + "In Progress" in status dropdown
+     Expected: Only Open and In Progress findings shown
+
+7.5  Category filter
+     Check "Access Rules" in category dropdown
+     Expected: Only Access Rules findings shown; all categories still available
+
+7.6  Search filter
+     Type in search bar
+     Expected: Findings filtered by title or object name
+
+7.7  Combined filters (AND across types)
+     Select severity=High, status=Open, category="Access Rules"
+     Expected: Only findings matching ALL criteria
+
+7.8  KPI card click sets filter
+     Click "Critical" KPI card
+     Expected: Severity dropdown updates; Critical toggled on
+
+7.9  KPI card click again clears filter
+     Click "Critical" KPI card again
+     Expected: Critical toggled off; severity filter cleared
+
+7.10 Filter Reset button
+     Apply various filters → click "Reset"
+     Expected: All filters cleared; full list restored
+
+
+═══════════════════════════════════════════════════════════════════════════
+8. FINDINGS — PAGINATION
+═══════════════════════════════════════════════════════════════════════════
+
+8.1  Default page size
+     Open device with >25 findings
+     Expected: Shows first 25 findings with pagination controls below table
+
+8.2  Change page size
+     Select "50" from per-page dropdown
+     Expected: Now shows 50 findings per page
+
+8.3  Next page
+     Click "»" (Next)
+     Expected: Shows next page of findings
+
+8.4  Previous page
+     Click "«" (Previous)
+     Expected: Shows previous page
+
+8.5  Jump to last page
+     Click "»»" (Last)
+     Expected: Jumps to last page
+
+8.6  Jump to first page
+     Click "««" (First)
+     Expected: Jumps to first page
+
+8.7  Page number click
+     Click page number 3 in pagination bar
+     Expected: Jumps directly to page 3
+
+8.8  Filter change resets to page 1
+     Be on page 3 → apply a new filter
+     Expected: Automatically resets to page 1
+
+8.9  Page range display
+     Check pagination bar text
+     Expected: "1–25 of 198" updates correctly on every navigation
+
+8.10 Pagination hidden when not needed
+     Filter to a severity with ≤ page size findings
+     Expected: Pagination controls disappear
+
+
+═══════════════════════════════════════════════════════════════════════════
+9. TSR COMPARISON
+═══════════════════════════════════════════════════════════════════════════
+
+9.1  Compare button hidden with one TSR
+     Device with only 1 TSR
+     Expected: No "Compare Findings" button
+
+9.2  Compare button visible with two or more TSRs
+     Device with ≥2 completed analyses
+     Expected: "Compare Findings" button visible
+
+9.3  Compare two TSRs — summary
+     Click Compare → select baseline + newer TSR → Compare
+     Expected: Summary cards — New, Resolved, Config Changes, Score Δ
+
+9.4  Compare — Score Δ correct
+     Compare two TSRs with different scores
+     Expected: Score Δ shows correct +/- change
+
+9.5  Compare — Detailed Report
+     Click "Detailed Report" in comparison modal
+     Expected: Full side-by-side table with severity, title, category,
+              per-TSR status
+
+9.6  Compare — Print/PDF
+     Click "Print/PDF" in detailed report
+     Expected: Browser print dialog opens
+
+
+═══════════════════════════════════════════════════════════════════════════
+10. FINDINGS — WORKFLOW & BULK ACTIONS
+════════════════════════════════════════════════════════════════════════════
+
+10.1 Select single finding
+     Click checkbox on one row
+     Expected: Row selected; bulk action bar with count appears
+
+10.2 Bulk acknowledge
+     Select multiple → "Acknowledge" → enter comment
+     Expected: All selected transitioned to "acknowledged"
+
+10.3 Bulk mark in progress
+     Select multiple → "In Progress" → enter comment
+     Expected: Status updated to in_progress
+
+10.4 Bulk mark fixed
+     Select multiple → "Mark Fixed" → enter comment
+     Expected: Status updated to fixed
+
+10.5 Click finding row opens detail
+     Click a finding title/row
+     Expected: Navigates to Finding Detail page
+
+10.6 Back button preserves device context
+     Finding Detail → "← Back to findings"
+     Expected: Returns to same device's findings page
+
+10.7 Finding detail — status transition
+     Detail page → select new status from dropdown
+     Expected: Status updated; comment recorded in timeline
+
+10.8 Finding detail — add comment
+     Type comment → Submit
+     Expected: Comment added to history timeline
+
+10.9 Finding detail — correct data
+     Check description, evidence, remediation, compliance mappings
+     Expected: All fields populated correctly from analysis
+
+
+═══════════════════════════════════════════════════════════════════════════
+11. REPORTS & EXPORTS
+═══════════════════════════════════════════════════════════════════════════
+
+11.1 Export Technical PDF
+     Device findings → click "PDF"
+     Expected: Downloads Technical Report PDF
+
+11.2 Export CSV
+     Device findings → click "CSV"
+     Expected: Downloads CSV file with findings data
+
+11.3 Export buttons hidden without analysis
+     Device with no completed analysis
+     Expected: No PDF/CSV buttons shown
+
+
+═══════════════════════════════════════════════════════════════════════════
+12. SAVED VIEWS (Custom Filters)
+═══════════════════════════════════════════════════════════════════════════
+
+12.1 Save current filters
+     Apply filters → click "☆ Save" → enter a name
+     Expected: Saved view appears as badge above findings table
+
+12.2 Apply saved view
+     Click a saved view badge
+     Expected: Filters applied from that saved view
+
+12.3 Delete saved view
+     Click × on a saved view badge
+     Expected: View removed from list instantly
+
+12.4 Saved views persist
+     Save a view → refresh the page
+     Expected: Saved view still present after page reload
+
+
+═══════════════════════════════════════════════════════════════════════════
+13. VISIBILITY SETTINGS
+═══════════════════════════════════════════════════════════════════════════
+
+13.1 Global visibility — hide severity
+     Main Findings → Configure Filter → toggle "Low" Off
+     Expected: Low findings hidden from all device findings tables
+
+13.2 Global visibility — show again
+     Toggle "Low" back On
+     Expected: Low findings reappear
+
+13.3 Device visibility — override global
+     Device findings → Configure Filter → uncheck "Inherit from Global"
+     → toggle "Medium" Off
+     Expected: Only that device hides Medium; other devices show Medium
+
+13.4 Device visibility — inherit global
+     Device findings → Configure Filter → check "Inherit from Global"
+     Expected: Toggles disabled; device follows global settings
+
+
+═══════════════════════════════════════════════════════════════════════════
+14. LICENSING & BILLING
+═══════════════════════════════════════════════════════════════════════════
+
+14.1 View current plan
+     Organization → Plan & Billing
+     Expected: Current plan name, cost, term badge, license utilization bars
+
+14.2 License utilization — total bar
+     Check utilization section
+     Expected: Total bar shows used/purchased; turns red when ≥100% used
+
+14.3 License utilization — per-frequency bars
+     Check per-frequency breakdown
+     Expected: Monthly, Weekly, Daily, Hourly bars with correct used/purchased
+
+14.4 Upgrade plan
+     Pick a plan card → "Select Plan"
+     Expected: Plan upgraded; monthly cost recalculated; features updated
+
+14.5 Add licenses to cart (cart/bucket flow)
+     Set frequency + count → "Add to Cart"
+     Expected: Item appears in cart with running total
+
+14.6 Stack same-frequency items
+     Add Monthly/5 to cart → Add Monthly/3 to cart
+     Expected: Cart shows Monthly/8 as one stacked entry
+
+14.7 Remove from cart
+     Click × on a cart item
+     Expected: Item removed; total updates
+
+14.8 Purchase cart
+     Click "Purchase All" → confirm
+     Expected: Licenses purchased; utilization bars update immediately
+
+14.9 Yearly subscription discount
+     Switch subscription term to "Yearly" → check displayed cost
+     Expected: Yearly pricing with discount applied (default 20%)
+
+14.10 Free plan limits
+     Check Free plan BillingCard
+     Expected: "Free plan — 1 device included" shown; no purchase options
+
+14.11 MSP plan shows tier selector
+     Switch to MSP plan
+     Expected: Tier dropdown visible (10, 25, 50, etc.)
+
+14.12 Plan features checklist
+     Check features section on BillingCard
+     Expected: All plan features shown as green badges
+
+14.13 Purchase history
+     Scroll to Purchase History section
+     Expected: All past purchases with date, frequency, tier, count, term
+
+
+═══════════════════════════════════════════════════════════════════════════
+15. CUSTOMER MANAGEMENT (MSP)
+═══════════════════════════════════════════════════════════════════════════
+
+15.1 Customer list — summary cards
+     MSP: Customers page
+     Expected: Total Customers, Total Devices, Avg Devices/Customer
+
+15.2 Search customers
+     Type in search bar
+     Expected: List filters by name, email, country
+
+15.3 Add customer
+     + Add Customer → fill form → Create Customer
+     Expected: Customer appears in list with details
+
+15.4 Customer detail page
+     Click a customer row
+     Expected: Info card with contact, email, phone, country, timezone,
+              location, business unit, notes
+
+15.5 Customer detail — device list
+     View customer detail
+     Expected: Devices listed with status badges
+
+15.6 Register device from customer detail
+     Customer Detail → "Register Device" button
+     Expected: Registration form opens with customer pre-selected
+
+15.7 Delete customer — default protected
+     Try to delete "OrgName (default)" customer
+     Expected: Info modal: "Cannot delete — default customer"
+
+15.8 Delete customer — has devices
+     Try to delete customer with registered devices
+     Expected: Info modal: "Cannot delete — has registered devices"
+
+15.9 Delete customer — empty (no devices)
+     Delete customer with no devices → confirm
+     Expected: Customer deleted from list
+
+
+═══════════════════════════════════════════════════════════════════════════
+16. RULES LIBRARY
+═══════════════════════════════════════════════════════════════════════════
+
+16.1 List system rules
+     Rules page
+     Expected: ~67 system rules displayed in searchable table
+
+16.2 Create custom rule
+     + New Rule → fill form → choose category → Save
+     Expected: Rule appears in library
+
+16.3 Category dropdown in rule creation
+     + New Rule → check category dropdown
+     Expected: 16 predefined categories + "Custom" option
+
+16.4 Edit rule
+     Click rule → Edit → modify → Save
+     Expected: Changes reflected immediately
+
+16.5 Delete rule
+     Click rule → Delete → confirm
+     Expected: Rule removed from library
+
+16.6 API support badge
+     Rules page → toggle "GUI TSR / API TSR" view
+     Expected: All rules show "Supported" for API TSRs
+
+
+═══════════════════════════════════════════════════════════════════════════
+17. PLATFORM ADMIN (Superadmin)
+═══════════════════════════════════════════════════════════════════════════
+
+17.1 Platform overview
+     Superadmin: Platform page
+     Expected: All organizations with plan, users, devices, open findings
+
+17.2 Reset subscription
+     Click "Reset" on an org with a paid plan
+     Expected: Org plan reset to Free; all licenses cleared
+
+17.3 Factory wipe
+     Click "Wipe" → confirm twice
+     Expected: All org data deleted (devices, findings, TSRs, customers);
+              plan reset to Free
+
+17.4 Product Config
+     Platform → Product Config
+     Expected: Device generations, models, firmware management functional
+
+17.5 Plan Manager — create Professional plan
+     Plans → + Create → type=Professional → set per-frequency prices → Save
+     Expected: Plan appears in customer portal
+
+17.6 Plan Manager — create MSP plan with tiers
+     Plans → + Create → type=MSP → add tiers (10, 25 devices) →
+     set per-frequency prices per tier → Save
+     Expected: MSP plan with tier pricing appears in customer portal
+
+17.7 Plan Manager — edit plan
+     Edit plan → change prices/features → Save
+     Expected: Changes reflected in customer portal
+
+17.8 Plan Manager — clone plan
+     Click clone icon on a plan
+     Expected: Duplicate plan created
+
+17.9 Plan Manager — activate/deactivate
+     Edit plan → toggle Active off
+     Expected: Plan hidden from customer's plan selection
+
+17.10 Plan Manager — yearly discount
+     Edit plan → set yearly_discount_pct
+     Expected: Yearly pricing updates accordingly
+
+
+═══════════════════════════════════════════════════════════════════════════
+18. NAVIGATION & UI
+═══════════════════════════════════════════════════════════════════════════
+
+18.1 All sidebar links work
+     Click each sidebar navigation item
+     Expected: Navigates to correct page
+
+18.2 Active nav state
+     Navigate to different pages
+     Expected: Active nav item highlighted with blue accent
+
+18.3 Findings nav from device view
+     On device findings → click "Findings" in sidebar
+     Expected: Navigates to main Findings page (device list)
+
+18.4 Back navigation
+     Navigate deep (e.g. Finding Detail) → click "← Back to findings"
+     Expected: Returns to correct parent with device context preserved
+
+18.5 Dark theme
+     Visit all pages
+     Expected: Consistent dark security-console theme everywhere
+
+18.6 Severity colors
+     Check badges, dots, and bars
+     Expected: Critical (#ff4d4d), High (#ff8a3d), Medium (#f5c451),
+              Low (#4a9eff), Info (#7a879b) — correct everywhere
+
+18.7 Grade colors
+     Check score badges
+     Expected: A (#39d98a), B (#9ad94a), C (#f5c451), D (#ff8a3d), F (#ff4d4d)
+
+18.8 Responsive layout
+     Resize browser to tablet/mobile widths
+     Expected: Layout adapts; tables scroll horizontally; sidebar collapses
+
+
+═══════════════════════════════════════════════════════════════════════════
+19. EDGE CASES & ERROR STATES
+═══════════════════════════════════════════════════════════════════════════
+
+19.1 Empty state — no devices
+     New org with no devices → Devices page
+     Expected: "No devices yet" with "Add Your First Device" CTA
+
+19.2 Empty state — no findings
+     Device with no completed analysis → Findings
+     Expected: "No findings for this analysis"
+
+19.3 No findings match filters
+     Apply filters that match nothing
+     Expected: "No findings match your filters" with search icon
+
+19.4 Very long device name
+     Register device with 200-character name
+     Expected: Truncated in table; fully visible in detail page
+
+19.5 Special characters in serial
+     Register with serial like "ABC-123/XYZ.01"
+     Expected: Accepted and displayed correctly
+
+19.6 Rapid filter switching
+     Quickly switch between multiple filter combinations
+     Expected: Table always shows correct data; no stale rows; no crash
+
+19.7 Concurrent browser tabs
+     Open two tabs → make changes in tab A → check tab B
+     Expected: Tab B reflects changes after navigation (or on refresh)
+
+
+═══════════════════════════════════════════════════════════════════════════
+TESTING PRIORITIES
+═══════════════════════════════════════════════════════════════════════════
+
+Smoke Test (must pass before any release):
+  Sections 1–8: Auth → Device Registration → Configuration → Findings flow
+
+Depth Test (high-value features):
+  Sections 9–14: Comparison, Workflow, Reports, Filters, Visibility, Licensing
+
+Completeness Test (edge cases + admin):
+  Sections 15–19: MSP, Rules, Platform Admin, Navigation, Edge Cases
+
+═══════════════════════════════════════════════════════════════════════════

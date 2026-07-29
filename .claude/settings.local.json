@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c 'from firewallguard.rules.engine import RuleRegistry; from firewallguard.rules import catalog, catalog_parity, catalog_info; import firewallguard.rules.engine as e; *)",
+      "Bash(python -c \"import firewallguard.rules.catalog, firewallguard.rules.catalog_parity, firewallguard.rules.catalog_info; from firewallguard.rules.engine import registry; print\\('total registered:', len\\(registry.rules\\)\\); print\\('active rules:', len\\(registry.active_rules\\(\\)\\)\\); print\\('retired:', len\\(registry.retired\\)\\)\")",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest --version)",
+      "Bash(pip show *)",
+      "Bash(python -c \"import fastapi; print\\('fastapi', fastapi.__version__\\)\")",
+      "Bash(python -c \"import sqlalchemy; print\\('sqlalchemy', sqlalchemy.__version__\\)\")",
+      "Bash(python -c \"import reportlab; print\\('reportlab ok'\\)\")",
+      "PowerShell(python --version)",
+      "PowerShell(py --version)",
+      "PowerShell(python -m pip --version)",
+      "Bash(cd /c/Users/srather/Documents/Claude/ClaudeCode/firewallguard-ai/frontend && grep -rn \"max-w-6xl\" src/ | head)"
+    ]
+  }
+}

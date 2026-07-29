@@ -1,0 +1,5 @@
+# Development & security tooling (not required at runtime).
+-r requirements.txt
+
+pip-audit==2.7.3          # dependency vulnerability scanning (SOC 2)
+cyclonedx-bom==4.6.1      # SBOM generation (CycloneDX)

@@ -1,0 +1,79 @@
+[
+  {
+    "id": "lic-free",
+    "name": "Free",
+    "description": "1 device, 30-day validity",
+    "device_count": 1,
+    "subscription_term": "monthly",
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "is_active": true,
+    "sort_order": 0
+  },
+  {
+    "id": "lic-pro-1",
+    "name": "Professional — 1 Device",
+    "description": "1 device, unlimited analyses",
+    "device_count": 1,
+    "subscription_term": "monthly",
+    "monthly_price": 19,
+    "yearly_price": 190,
+    "is_active": true,
+    "sort_order": 10
+  },
+  {
+    "id": "lic-pro-5",
+    "name": "Professional — 5 Devices",
+    "description": "5 devices, unlimited analyses",
+    "device_count": 5,
+    "subscription_term": "monthly",
+    "monthly_price": 79,
+    "yearly_price": 790,
+    "is_active": true,
+    "sort_order": 11
+  },
+  {
+    "id": "lic-msp-tier10",
+    "name": "MSP Tier-10",
+    "description": "10 devices, unlimited analyses",
+    "device_count": 10,
+    "subscription_term": "monthly",
+    "monthly_price": 49,
+    "yearly_price": 470,
+    "is_active": true,
+    "sort_order": 30
+  },
+  {
+    "id": "lic-msp-tier25",
+    "name": "MSP Tier-25",
+    "description": "25 devices, unlimited analyses",
+    "device_count": 25,
+    "subscription_term": "monthly",
+    "monthly_price": 99,
+    "yearly_price": 950,
+    "is_active": true,
+    "sort_order": 31
+  },
+  {
+    "id": "lic-msp-tier50",
+    "name": "MSP Tier-50",
+    "description": "50 devices, unlimited analyses",
+    "device_count": 50,
+    "subscription_term": "monthly",
+    "monthly_price": 179,
+    "yearly_price": 1718,
+    "is_active": true,
+    "sort_order": 40
+  },
+  {
+    "id": "lic-msp-tier100",
+    "name": "MSP Tier-100",
+    "description": "100 devices, unlimited analyses",
+    "device_count": 100,
+    "subscription_term": "monthly",
+    "monthly_price": 299,
+    "yearly_price": 2870,
+    "is_active": true,
+    "sort_order": 41
+  }
+]

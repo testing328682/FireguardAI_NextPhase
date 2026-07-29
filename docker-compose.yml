@@ -1,0 +1,84 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: fgai
+      POSTGRES_PASSWORD: fgai
+      POSTGRES_DB: fgai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fgai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  api:
+    build: ./backend
+    environment:
+      FGAI_DATABASE_URL: postgresql+psycopg://fgai:fgai@db:5432/fgai
+      FGAI_REDIS_URL: redis://redis:6379/0
+      FGAI_CELERY_BROKER_URL: redis://redis:6379/1
+      FGAI_CELERY_RESULT_BACKEND: redis://redis:6379/2
+      FGAI_STORAGE_BACKEND: local
+      FGAI_LOCAL_STORAGE_DIR: /data/storage
+      FGAI_JWT_SECRET: dev-secret-change-me
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker -Q analysis -c 4 --loglevel=info
+    environment:
+      FGAI_DATABASE_URL: postgresql+psycopg://fgai:fgai@db:5432/fgai
+      FGAI_CELERY_BROKER_URL: redis://redis:6379/1
+      FGAI_CELERY_RESULT_BACKEND: redis://redis:6379/2
+      FGAI_STORAGE_BACKEND: local
+      FGAI_LOCAL_STORAGE_DIR: /data/storage
+      FGAI_JWT_SECRET: dev-secret-change-me
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      - db
+      - redis
+
+  beat:
+    build: ./backend
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    environment:
+      FGAI_DATABASE_URL: postgresql+psycopg://fgai:fgai@db:5432/fgai
+      FGAI_CELERY_BROKER_URL: redis://redis:6379/1
+      FGAI_CELERY_RESULT_BACKEND: redis://redis:6379/2
+      FGAI_STORAGE_BACKEND: local
+      FGAI_LOCAL_STORAGE_DIR: /data/storage
+      FGAI_JWT_SECRET: dev-secret-change-me
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      - db
+      - redis
+
+  web:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
+  storage:

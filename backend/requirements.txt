@@ -1,0 +1,44 @@
+# FirewallGuard AI - backend dependencies
+# API & server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+gunicorn==23.0.0
+python-multipart==0.0.20
+
+# Data & ORM
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# Validation & settings
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# Auth
+pyjwt==2.10.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+cryptography==44.0.0          # Fernet encryption for device credentials
+
+# Rule engine
+cel-python==0.1.5             # CEL expression evaluation for DB-stored rules
+
+# Billing
+stripe==11.4.1                # Stripe billing (guarded; degrades without API key)
+
+# Background processing & cache
+celery==5.4.0
+redis==5.2.1
+
+# Reporting
+reportlab==4.2.5
+openpyxl==3.1.5               # Excel (.xlsx) findings export
+Jinja2==3.1.4
+
+# Cloud storage (production)
+boto3==1.35.92
+
+# Testing
+pytest==8.3.4
+httpx==0.28.1

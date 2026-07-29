@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FirewallGuard AI — Architecture Reference</title>
+<style>
+  :root {
+    --bg:        #0a0e16;
+    --bg2:       #111827;
+    --card:      #1a2030;
+    --border:    #2a3444;
+    --text:      #e2e8f0;
+    --muted:     #94a3b8;
+    --accent:    #4f8cff;
+    --signal:    #39d98a;
+    --critical:  #ff4d4d;
+    --high:      #ff8a3d;
+    --medium:    #f5c451;
+    --low:       #4a9eff;
+    --info:      #7a879b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    display: flex;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  nav {
+    width: 240px;
+    min-width: 240px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    padding: 24px 0;
+    flex-shrink: 0;
+  }
+  nav .logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  nav .logo h2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  nav .logo p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav ul { list-style: none; }
+  nav ul li a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  nav ul li a:hover, nav ul li a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: rgba(79,140,255,0.06);
+  }
+  nav ul li.section-head a {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #4a5568;
+    padding-top: 16px;
+    cursor: default;
+    pointer-events: none;
+    border-left-color: transparent;
+    background: none;
+  }
+
+  /* ── Main content ────────────────────────────────── */
+  main { flex: 1; min-width: 0; padding: 40px 48px; max-width: 1100px; }
+
+  /* Cover */
+  .cover {
+    text-align: center;
+    padding: 60px 0 80px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 60px;
+  }
+  .cover .badge {
+    display: inline-block;
+    background: rgba(79,140,255,0.12);
+    border: 1px solid rgba(79,140,255,0.3);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 999px;
+    margin-bottom: 20px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .cover p { color: var(--muted); font-size: 16px; max-width: 520px; margin: 0 auto; }
+  .cover .meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 32px;
+  }
+  .cover .meta span { font-size: 12px; color: var(--muted); }
+  .cover .meta span strong { color: var(--text); }
+
+  /* Sections */
+  section { margin-bottom: 64px; }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+    scroll-margin-top: 24px;
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 28px 0 12px;
+    scroll-margin-top: 24px;
+  }
+  h4 { font-size: 13px; font-weight: 600; color: var(--accent); margin: 20px 0 8px; }
+  p { color: var(--muted); margin-bottom: 12px; }
+  p strong { color: var(--text); }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card-sm {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+  }
+  .card-sm h4 { margin: 0 0 6px; font-size: 12px; }
+  .card-sm p { font-size: 12px; margin: 0; }
+
+  /* Tables */
+  .tbl-wrap { overflow-x: auto; margin-bottom: 24px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(42,52,68,0.6);
+    color: var(--muted);
+    vertical-align: top;
+  }
+  td strong { color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 11px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--accent);
+  }
+
+  /* Code blocks */
+  pre {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #c9d1d9;
+    margin-bottom: 20px;
+  }
+  pre .c { color: #6e7681; }
+  pre .k { color: #ff7b72; }
+  pre .s { color: #a5d6ff; }
+  pre .n { color: #79c0ff; }
+  pre .arrow { color: #f5c451; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge-green  { color: var(--signal);   border-color: rgba(57,217,138,0.3); background: rgba(57,217,138,0.08); }
+  .badge-blue   { color: var(--accent);   border-color: rgba(79,140,255,0.3); background: rgba(79,140,255,0.08); }
+  .badge-red    { color: var(--critical); border-color: rgba(255,77,77,0.3);  background: rgba(255,77,77,0.08);  }
+  .badge-yellow { color: var(--medium);   border-color: rgba(245,196,81,0.3); background: rgba(245,196,81,0.08); }
+  .badge-gray   { color: var(--muted);    border-color: var(--border);         background: rgba(255,255,255,0.04); }
+
+  /* Phase list */
+  .phase-item {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    align-items: flex-start;
+  }
+  .phase-num {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: rgba(79,140,255,0.15);
+    border: 1px solid rgba(79,140,255,0.3);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .check { color: var(--signal); margin-right: 6px; }
+
+  /* Flow step */
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .flow-step .num {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    border-radius: 50%;
+    background: rgba(79,140,255,0.15);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .flow-step p { margin: 0; font-size: 12px; }
+
+  /* Role table rows */
+  .role-owner  { color: #c084fc; }
+  .role-admin  { color: var(--accent); }
+  .role-analyst{ color: var(--signal); }
+  .role-msp    { color: var(--medium); }
+  .role-viewer { color: var(--muted); }
+
+  /* Severity dots */
+  .sev-crit { color: var(--critical); }
+  .sev-high { color: var(--high); }
+  .sev-med  { color: var(--medium); }
+  .sev-low  { color: var(--low); }
+  .sev-info { color: var(--info); }
+
+  ul.feat { padding-left: 20px; margin-bottom: 12px; }
+  ul.feat li { color: var(--muted); margin-bottom: 4px; font-size: 13px; }
+  ul.feat li strong { color: var(--text); }
+
+  /* Divider */
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  /* Print */
+  @media print {
+    nav { display: none; }
+    main { padding: 24px; max-width: 100%; }
+    .cover { padding: 40px 0; }
+    .cover h1 { -webkit-text-fill-color: #1a202c; }
+    body { background: white; color: #1a202c; }
+    .card, .card-sm { border: 1px solid #e2e8f0; background: #f7fafc; }
+    pre { background: #f7fafc; border: 1px solid #e2e8f0; color: #1a202c; }
+    th { background: #edf2f7; color: #4a5568; }
+    h2, h3, h4 { color: #1a202c; }
+    p, td, ul.feat li { color: #4a5568; }
+    code { color: #2b6cb0; background: #ebf8ff; border-color: #bee3f8; }
+    a { color: #2b6cb0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ Sidebar ════════════════════════════════════════ -->
+<nav>
+  <div class="logo">
+    <h2>FirewallGuard AI</h2>
+    <p>Architecture Reference</p>
+  </div>
+  <ul>
+    <li class="section-head"><a>Overview</a></li>
+    <li><a href="#overview">System Overview</a></li>
+    <li><a href="#stack">Technology Stack</a></li>
+
+    <li class="section-head"><a>Backend</a></li>
+    <li><a href="#analysis-engine">Analysis Engine</a></li>
+    <li><a href="#service-layer">Service Layer (API)</a></li>
+    <li><a href="#data-models">Data Models</a></li>
+    <li><a href="#rule-engine">Rule Engine</a></li>
+    <li><a href="#background">Background Processing</a></li>
+
+    <li class="section-head"><a>Frontend</a></li>
+    <li><a href="#frontend">SPA Architecture</a></li>
+    <li><a href="#components">Components</a></li>
+
+    <li class="section-head"><a>Cross-cutting</a></li>
+    <li><a href="#data-flow">Data Flow</a></li>
+    <li><a href="#auth">Auth &amp; Multi-Tenancy</a></li>
+    <li><a href="#infra">Infrastructure</a></li>
+    <li><a href="#integrations">Integrations</a></li>
+
+    <li class="section-head"><a>Planning</a></li>
+    <li><a href="#phases">Phase Roadmap</a></li>
+    <li><a href="#decisions">Design Decisions</a></li>
+  </ul>
+</nav>
+
+<!-- ══ Main ══════════════════════════════════════════ -->
+<main>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="badge">Architecture Reference</div>
+    <h1>FirewallGuard AI</h1>
+    <p>Multi-tenant SaaS platform for SonicWall firewall security posture analysis</p>
+    <div class="meta">
+      <span><strong>Version</strong> — Production (All 4 Phases)</span>
+      <span><strong>Stack</strong> — FastAPI · React · PostgreSQL · Celery</span>
+      <span><strong>Date</strong> — July 2026</span>
+    </div>
+  </div>
+
+
+  <!-- ══ 1. System Overview ══════════════════════════════ -->
+  <section id="overview">
+    <h2>1. System Overview</h2>
+    <p>FirewallGuard AI is a <strong>multi-tenant SaaS platform</strong> that ingests SonicWall Tech Support Reports (TSRs), evaluates them against a detection rule catalog, correlates attack paths, matches firmware against the PSIRT advisory database, and scores each device's security posture. Findings flow into a workflow system with triage, alerting, and ticketing integrations.</p>
+
+    <div class="card" style="padding:0; overflow:hidden;">
+      <svg viewBox="0 0 900 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;background:#0d1117;">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#4f8cff" opacity="0.7"/>
+          </marker>
+          <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#39d98a" opacity="0.7"/>
+          </marker>
+        </defs>
+
+        <!-- Browser -->
+        <rect x="20" y="30" width="120" height="56" rx="8" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <text x="80" y="57" text-anchor="middle" fill="#4f8cff" font-size="11" font-family="sans-serif" font-weight="700">Browser</text>
+        <text x="80" y="73" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">React SPA</text>
+
+        <!-- Nginx -->
+        <rect x="20" y="140" width="120" height="56" rx="8" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <text x="80" y="167" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif" font-weight="700">Nginx :8080</text>
+        <text x="80" y="183" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Static Bundle</text>
+
+        <!-- Vite Dev -->
+        <rect x="20" y="240" width="120" height="40" rx="8" fill="#111827" stroke="#2a3444" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="80" y="258" text-anchor="middle" fill="#6b7280" font-size="10" font-family="sans-serif">Vite Dev :5173</text>
+        <text x="80" y="272" text-anchor="middle" fill="#4b5563" font-size="9" font-family="sans-serif">(development only)</text>
+
+        <!-- FastAPI -->
+        <rect x="220" y="100" width="140" height="200" rx="10" fill="#1a2030" stroke="#4f8cff" stroke-width="1.5"/>
+        <text x="290" y="128" text-anchor="middle" fill="#4f8cff" font-size="12" font-family="sans-serif" font-weight="700">FastAPI :8000</text>
+        <line x1="230" y1="138" x2="350" y2="138" stroke="#2a3444" stroke-width="1"/>
+        <text x="290" y="158" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Auth / JWT / RBAC</text>
+        <text x="290" y="175" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">20+ Routers</text>
+        <text x="290" y="192" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Rate Limiting</text>
+        <text x="290" y="209" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Audit Logging</text>
+        <text x="290" y="226" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Multi-Tenant Isolation</text>
+        <text x="290" y="243" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Storage Abstraction</text>
+        <text x="290" y="262" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Celery Dispatch</text>
+
+        <!-- Postgres -->
+        <rect x="440" y="60" width="130" height="64" rx="8" fill="#1a2030" stroke="#39d98a" stroke-width="1.5"/>
+        <text x="505" y="87" text-anchor="middle" fill="#39d98a" font-size="11" font-family="sans-serif" font-weight="700">PostgreSQL :5432</text>
+        <text x="505" y="104" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Multi-tenant schema</text>
+        <text x="505" y="116" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">Alembic migrations</text>
+
+        <!-- Redis -->
+        <rect x="440" y="155" width="130" height="64" rx="8" fill="#1a2030" stroke="#ff8a3d" stroke-width="1.5"/>
+        <text x="505" y="182" text-anchor="middle" fill="#ff8a3d" font-size="11" font-family="sans-serif" font-weight="700">Redis :6379</text>
+        <text x="505" y="199" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Celery broker</text>
+        <text x="505" y="211" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">Result backend · Locks</text>
+
+        <!-- Storage -->
+        <rect x="440" y="250" width="130" height="54" rx="8" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <text x="505" y="275" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif" font-weight="700">Storage</text>
+        <text x="505" y="292" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">S3 / Local FS</text>
+
+        <!-- Celery Worker -->
+        <rect x="660" y="80" width="140" height="220" rx="10" fill="#1a2030" stroke="#f5c451" stroke-width="1.5"/>
+        <text x="730" y="108" text-anchor="middle" fill="#f5c451" font-size="12" font-family="sans-serif" font-weight="700">Celery Worker</text>
+        <line x1="670" y1="118" x2="790" y2="118" stroke="#2a3444" stroke-width="1"/>
+        <text x="730" y="140" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">TSR load from storage</text>
+        <text x="730" y="158" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Format detection</text>
+        <text x="730" y="176" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Analysis pipeline</text>
+        <text x="730" y="194" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Rule evaluation</text>
+        <text x="730" y="212" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">PSIRT matching</text>
+        <text x="730" y="230" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Scoring + drift</text>
+        <text x="730" y="248" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Findings sync</text>
+        <text x="730" y="266" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Alerting</text>
+        <text x="730" y="284" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Beat scheduler</text>
+
+        <!-- Arrows -->
+        <!-- Browser ↔ nginx -->
+        <path d="M80,86 L80,140" stroke="#4f8cff" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.6"/>
+        <path d="M75,140 L75,86" stroke="#4f8cff" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.3"/>
+        <!-- nginx → API -->
+        <path d="M140,168 L220,168" stroke="#4f8cff" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.6"/>
+        <!-- Browser → API (proxy) -->
+        <path d="M140,200 Q180,200 220,190" stroke="#4f8cff" stroke-width="1" marker-end="url(#arr)" fill="none" opacity="0.4" stroke-dasharray="4,3"/>
+        <!-- Vite → API -->
+        <path d="M140,260 Q185,260 220,220" stroke="#4f8cff" stroke-width="1" marker-end="url(#arr)" fill="none" opacity="0.3" stroke-dasharray="4,3"/>
+        <!-- API → Postgres -->
+        <path d="M360,120 L440,90" stroke="#39d98a" stroke-width="1.2" marker-end="url(#arr2)" fill="none" opacity="0.6"/>
+        <!-- API → Redis -->
+        <path d="M360,190 L440,185" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.6"/>
+        <!-- API → Storage -->
+        <path d="M360,245 L440,268" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.5"/>
+        <!-- Redis → Worker -->
+        <path d="M570,185 L660,175" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.6"/>
+        <!-- Worker → Postgres -->
+        <path d="M730,80 Q730,60 570,78" stroke="#39d98a" stroke-width="1.2" marker-end="url(#arr2)" fill="none" opacity="0.5"/>
+        <!-- Worker → Storage -->
+        <path d="M730,300 Q730,320 600,300" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)" fill="none" opacity="0.4"/>
+
+        <!-- Ext integrations label -->
+        <text x="450" y="340" fill="#4b5563" font-size="10" font-family="sans-serif" font-weight="700" text-anchor="middle" letter-spacing="0.06em">EXTERNAL INTEGRATIONS</text>
+        <rect x="310" y="352" width="72" height="26" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="346" y="369" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Stripe</text>
+        <rect x="392" y="352" width="72" height="26" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="428" y="369" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Jira / SN</text>
+        <rect x="474" y="352" width="72" height="26" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="510" y="369" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">Slack / Email</text>
+        <rect x="556" y="352" width="72" height="26" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="592" y="369" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif">SonicOS API</text>
+        <path d="M440,304 L440,352" stroke="#2a3444" stroke-width="1" stroke-dasharray="3,2" fill="none" opacity="0.6"/>
+        <path d="M730,300 Q820,380 600,385" stroke="#2a3444" stroke-width="1" stroke-dasharray="3,2" fill="none" opacity="0.4"/>
+
+        <!-- Legend -->
+        <line x1="30" y1="430" x2="55" y2="430" stroke="#4f8cff" stroke-width="1.5"/>
+        <text x="60" y="434" fill="#6b7280" font-size="10" font-family="sans-serif">HTTP / API</text>
+        <line x1="130" y1="430" x2="155" y2="430" stroke="#39d98a" stroke-width="1.5"/>
+        <text x="160" y="434" fill="#6b7280" font-size="10" font-family="sans-serif">DB reads/writes</text>
+        <line x1="265" y1="430" x2="290" y2="430" stroke="#ff8a3d" stroke-width="1.5"/>
+        <text x="295" y="434" fill="#6b7280" font-size="10" font-family="sans-serif">Task queue</text>
+        <line x1="380" y1="430" x2="405" y2="430" stroke="#2a3444" stroke-width="1.5" stroke-dasharray="4,2"/>
+        <text x="410" y="434" fill="#6b7280" font-size="10" font-family="sans-serif">Dev proxy / external</text>
+      </svg>
+    </div>
+
+    <h3>Top-Level Layout</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Path</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>backend/firewallguard/</code></td><td>Standalone analysis engine — no DB dependency</td></tr>
+          <tr><td><code>backend/app/</code></td><td>FastAPI service layer — multi-tenancy, storage, Celery, integrations</td></tr>
+          <tr><td><code>backend/alembic/</code></td><td>Database migrations (sequential, with dialect guards)</td></tr>
+          <tr><td><code>backend/tests/</code></td><td>pytest suite — engine, API, rate-limit, phase 2–4 tests</td></tr>
+          <tr><td><code>frontend/src/components/</code></td><td>React TSX components — one file per feature area</td></tr>
+          <tr><td><code>frontend/src/lib/</code></td><td>HTTP client, TypeScript types, hash router, UI utilities</td></tr>
+          <tr><td><code>docs/</code></td><td>SOC2, multi-region deployment, known advisories</td></tr>
+          <tr><td><code>docker-compose.yml</code></td><td>5-service dev stack (db, redis, api, worker, web)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
+  <!-- ══ 2. Tech Stack ══════════════════════════════════ -->
+  <section id="stack">
+    <h2>2. Technology Stack</h2>
+    <div class="card-grid">
+      <div class="card-sm">
+        <h4>Backend Runtime</h4>
+        <p>Python 3.12 — type hints on every function signature</p>
+      </div>
+      <div class="card-sm">
+        <h4>API Framework</h4>
+        <p>FastAPI + Uvicorn — async, OpenAPI auto-docs</p>
+      </div>
+      <div class="card-sm">
+        <h4>ORM / DB</h4>
+        <p>SQLAlchemy 2.0 + PostgreSQL 16 + Alembic</p>
+      </div>
+      <div class="card-sm">
+        <h4>Task Queue</h4>
+        <p>Celery + Redis — analysis tasks + Beat scheduler</p>
+      </div>
+      <div class="card-sm">
+        <h4>Auth</h4>
+        <p>JWT (HS256) + bcrypt + TOTP MFA + OIDC / SAML SSO</p>
+      </div>
+      <div class="card-sm">
+        <h4>Storage</h4>
+        <p>S3 or local filesystem — abstracted via <code>storage.py</code></p>
+      </div>
+      <div class="card-sm">
+        <h4>Rule DSL</h4>
+        <p>Python callables (system) + CEL expressions (custom)</p>
+      </div>
+      <div class="card-sm">
+        <h4>PDF / Reports</h4>
+        <p>ReportLab (PDF), openpyxl (XLSX), csv stdlib</p>
+      </div>
+      <div class="card-sm">
+        <h4>Frontend</h4>
+        <p>React 18 + TypeScript + Vite + Tailwind CSS</p>
+      </div>
+      <div class="card-sm">
+        <h4>Charts</h4>
+        <p>Recharts (trends/analytics) + SVG gauge (ScoreGauge)</p>
+      </div>
+      <div class="card-sm">
+        <h4>Routing</h4>
+        <p>Hash router (<code>useHashRoute</code>) — no server-side routing</p>
+      </div>
+      <div class="card-sm">
+        <h4>Container</h4>
+        <p>Docker Compose — 5 services, pgdata + storage volumes</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══ 3. Analysis Engine ══════════════════════════════ -->
+  <section id="analysis-engine">
+    <h2>3. Analysis Engine (<code>firewallguard/</code>)</h2>
+    <p>The analysis engine is <strong>standalone and database-agnostic</strong> — it processes raw TSR text and returns a plain JSON-serializable dict. It has no awareness of organizations, users, or the HTTP layer.</p>
+
+    <h3>3.1 TSR Parsing</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>tsr/reader.py</code></td><td>Splits raw TSR bytes into named sections using regex markers (<code>#…_START / END</code>)</td></tr>
+        <tr><td><code>tsr/parser.py</code></td><td>Parses sections into a flat <code>snapshot</code> dict — the canonical representation for rule evaluation</td></tr>
+        <tr><td><code>tsr/parser_ext.py</code></td><td>Extended parsers: flood/DDoS stats, local users, WLAN, CFS, CPU, authentication sections</td></tr>
+        <tr><td><code>tsr/normalize.py</code></td><td>Detects GUI vs SonicOS API TSR format; normalizes API TSRs to GUI-equivalent text so all rules apply identically</td></tr>
+        <tr><td><code>tsr/sonicos_keys.txt</code></td><td>Harvested SonicWall key dictionary used by the normalizer for field mapping</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>3.2 Rule Engine</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Rules</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>rules/engine.py</code></td><td>—</td><td><strong>Finding</strong> dataclass + <strong>Rule</strong> dataclass + <strong>RuleRegistry</strong> orchestrator. Runs all rules in sequence, each returning zero or more Findings.</td></tr>
+        <tr><td><code>rules/catalog.py</code></td><td>~25</td><td>Core hardening checks: IPS/AV disabled, weak auth, weak ciphers, default credentials, unused services, SNMP/NTP misconfiguration, etc.</td></tr>
+        <tr><td><code>rules/catalog_parity.py</code></td><td>~32</td><td>Per-object checks: access rules (ACR), address objects (AOB), services (SVC), NAT, IPSec, firewall rules, auth, performance</td></tr>
+        <tr><td><code>rules/catalog_info.py</code></td><td>~10</td><td>Informational inventory: device info, version, interface count</td></tr>
+      </tbody>
+    </table></div>
+
+    <p>Every <strong>Finding</strong> carries: <code>rule_id</code>, <code>severity</code>, <code>title</code>, <code>category</code>, <code>evidence</code>, <code>impact</code>, <code>remediation</code>, <code>verification_steps</code>, <code>compliance</code> mapping, exploitability triplet (likelihood / impact / exposure), and optionally <code>object_name</code> / <code>object_type</code> / <code>object_detail</code> for per-object findings.</p>
+
+    <h3>3.3 Firmware Intelligence</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>intelligence/firmware.py</code></td><td>Matches device firmware/model against PSIRT advisory database; returns CVE list, CVSS scores, fixed versions</td></tr>
+        <tr><td><code>intelligence/data/psirt.json</code></td><td>Curated SonicWall PSIRT advisory data (auto-refreshed daily in production)</td></tr>
+        <tr><td><code>intelligence/correlation.py</code></td><td>Groups related findings into narrative attack-path chains for operator awareness</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>3.4 Analytics &amp; Reports</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>analytics/scoring.py</code></td><td>Computes 0–100 score and A–F grade from severity-weighted finding counts</td></tr>
+        <tr><td><code>analytics/drift.py</code></td><td>Detects configuration drift between two TSR snapshots — new findings, resolved findings, config changes</td></tr>
+        <tr><td><code>report/generator.py</code></td><td>PDF (ReportLab), CSV, and JSON exports with optional white-label branding</td></tr>
+        <tr><td><code>pipeline.py</code></td><td>Orchestrates all 10 stages in order (see Data Flow section)</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 4. Service Layer ════════════════════════════════ -->
+  <section id="service-layer">
+    <h2>4. Service Layer (<code>app/</code>)</h2>
+
+    <h3>4.1 Core Modules</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>main.py</code></td><td>FastAPI app; mounts all 20+ routers, CORS, rate-limiting, security-headers middleware, startup <code>create_all()</code></td></tr>
+        <tr><td><code>config.py</code></td><td>Pydantic Settings from env vars — DB URL, Redis, JWT, S3, feature flags, plan limits</td></tr>
+        <tr><td><code>database.py</code></td><td>SQLAlchemy engine + <code>SessionLocal</code> dependency</td></tr>
+        <tr><td><code>security.py</code></td><td>bcrypt hashing, JWT issue/verify, <code>current_user</code> dependency, <code>require_role()</code> factory, account lockout</td></tr>
+        <tr><td><code>mfa.py</code></td><td>TOTP (RFC 6238) enrollment + verify; bcrypt-hashed backup codes</td></tr>
+        <tr><td><code>crypto.py</code></td><td>Fernet encryption for stored credentials and integration secrets</td></tr>
+        <tr><td><code>storage.py</code></td><td>Save/load TSR bytes from S3 or local filesystem (region-aware in Phase 4)</td></tr>
+        <tr><td><code>audit.py</code></td><td>Append-only <code>log_action()</code> — captures auth events, rule changes, finding state changes, exports</td></tr>
+        <tr><td><code>findings_sync.py</code></td><td>Persists pipeline findings; auto-reopen if rule fires again; auto-resolve if no longer detected</td></tr>
+        <tr><td><code>alerting.py</code></td><td>Evaluates alert subscriptions; fires email, webhook, Slack, Jira/ServiceNow ticket creation</td></tr>
+        <tr><td><code>scheduler.py</code></td><td>Next-run arithmetic; Redis-based concurrent scan slot management</td></tr>
+        <tr><td><code>sonicos.py</code></td><td>SonicOS REST client: login, export TSR, logout, error classification</td></tr>
+        <tr><td><code>rule_engine.py</code></td><td>Hybrid bridge: CEL custom rules, system-rule mirroring, suppressions, firmware compliance</td></tr>
+        <tr><td><code>tasks.py</code></td><td>Celery workers: <code>run_analysis_inline</code>, <code>pull_and_analyze</code>, <code>ingest_tsr_bytes</code>, drift, beat</td></tr>
+        <tr><td><code>billing.py</code></td><td>Device/frequency limit enforcement; Stripe integration; trial workflow</td></tr>
+        <tr><td><code>sso.py</code></td><td>OIDC (JWKS-verified) + SAML 2.0 callbacks; JIT user provisioning; role mapping</td></tr>
+        <tr><td><code>ticketing.py</code></td><td>Jira (OAuth/PAT) + ServiceNow REST — create issues, bidirectional status sync</td></tr>
+        <tr><td><code>psirt_refresh.py</code></td><td>Daily PSIRT advisory refresh; content-hash detection; changelog</td></tr>
+        <tr><td><code>privacy.py</code></td><td>GDPR data export + right-to-erasure (anonymises audit/finding history)</td></tr>
+        <tr><td><code>retention.py</code></td><td>Per-plan data-retention purge of aged analyses/TSRs</td></tr>
+        <tr><td><code>secheaders.py</code></td><td>Security headers middleware — HSTS, CSP, X-Frame-Options</td></tr>
+        <tr><td><code>ratelimit.py</code></td><td>Per-IP fixed-window rate-limiting middleware</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>4.2 Router Modules</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Router</th><th>Key Endpoints</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr><td><strong>auth</strong></td><td>POST /login, /refresh, /signup, /mfa/*, /logout</td><td>Registration, login, JWT issue, MFA enrollment</td></tr>
+        <tr><td><strong>devices</strong></td><td>GET/POST /devices, /devices/connect, /devices/{id}/detail</td><td>Device CRUD, TSR history, API connection</td></tr>
+        <tr><td><strong>analyses</strong></td><td>POST /customers/{id}/tsrs, GET /analyses/{id}</td><td>TSR upload, result retrieval</td></tr>
+        <tr><td><strong>findings</strong></td><td>GET /findings, PATCH /findings/{id}, POST /comments</td><td>Triage workflow, bulk actions, comments</td></tr>
+        <tr><td><strong>rules</strong></td><td>GET/POST/PATCH /rules, GET /rules/{id}/versions</td><td>Rule library, CEL editor, approval workflow</td></tr>
+        <tr><td><strong>compliance</strong></td><td>GET /compliance/frameworks, /devices/{id}/compliance</td><td>Per-framework compliance matrices</td></tr>
+        <tr><td><strong>dashboard</strong></td><td>GET /dashboard</td><td>Fleet KPIs, compliance roll-up</td></tr>
+        <tr><td><strong>reports</strong></td><td>GET /analyses/{id}/report, /export/xlsx</td><td>PDF, CSV, XLSX export</td></tr>
+        <tr><td><strong>schedules</strong></td><td>GET/POST/PATCH /schedules</td><td>Per-device scan schedule management</td></tr>
+        <tr><td><strong>integrations</strong></td><td>GET/POST /integrations, /webhooks/{system}/{token}</td><td>External system configuration + webhook receiver</td></tr>
+        <tr><td><strong>tokens</strong></td><td>GET/POST/DELETE /api-tokens</td><td>Programmatic API token lifecycle</td></tr>
+        <tr><td><strong>alerts</strong></td><td>GET/PATCH /alert-subscriptions</td><td>Notification preferences</td></tr>
+        <tr><td><strong>audit_log</strong></td><td>GET /audit-log</td><td>Queryable append-only audit log</td></tr>
+        <tr><td><strong>billing</strong></td><td>GET /plans, /billing/usage, POST /billing/upgrade</td><td>Plan selection, usage, Stripe checkout</td></tr>
+        <tr><td><strong>analytics</strong></td><td>GET /analytics/trends</td><td>Score progression, MTTR, recurrence, top rules</td></tr>
+        <tr><td><strong>platform</strong></td><td>GET /platform/overview, POST /platform/analyze-tsr</td><td>Superadmin cross-tenant dashboard + TSR tester</td></tr>
+        <tr><td><strong>platform_config</strong></td><td>/generations, /firmware-recommendations, /api-configs</td><td>Device generations, firmware compliance, API flow</td></tr>
+        <tr><td><strong>sso</strong></td><td>POST /sso/callback</td><td>OIDC/SAML callback, JIT user provision</td></tr>
+        <tr><td><strong>psirt</strong></td><td>GET /psirt/advisories, POST /psirt/refresh</td><td>Advisory data and manual refresh</td></tr>
+        <tr><td><strong>privacy</strong></td><td>POST /privacy/export, /privacy/erase</td><td>GDPR export and erasure</td></tr>
+        <tr><td><strong>plans / licenses</strong></td><td>GET/POST /plans, /license-bundles</td><td>Dynamic plan and license management</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 5. Data Models ══════════════════════════════════ -->
+  <section id="data-models">
+    <h2>5. Data Models</h2>
+
+    <h3>Entity Relationship (key tables)</h3>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <svg viewBox="0 0 860 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;background:#0d1117;">
+        <!-- Organizations -->
+        <rect x="20" y="30" width="140" height="80" rx="6" fill="#1a2030" stroke="#4f8cff" stroke-width="1.5"/>
+        <rect x="20" y="30" width="140" height="22" rx="6" fill="rgba(79,140,255,0.15)"/>
+        <rect x="20" y="44" width="140" height="8" rx="0" fill="rgba(79,140,255,0.15)"/>
+        <text x="90" y="47" text-anchor="middle" fill="#4f8cff" font-size="11" font-family="sans-serif" font-weight="700">Organization</text>
+        <text x="30" y="66" fill="#94a3b8" font-size="9.5" font-family="sans-serif">id, plan, is_msp, region</text>
+        <text x="30" y="80" fill="#94a3b8" font-size="9.5" font-family="sans-serif">brand_*, hidden_severities</text>
+        <text x="30" y="94" fill="#94a3b8" font-size="9.5" font-family="sans-serif">sso_config, stripe_id</text>
+
+        <!-- Users -->
+        <rect x="20" y="155" width="140" height="80" rx="6" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <rect x="20" y="155" width="140" height="22" rx="6" fill="rgba(42,52,68,0.6)"/>
+        <rect x="20" y="169" width="140" height="8" rx="0" fill="rgba(42,52,68,0.6)"/>
+        <text x="90" y="172" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif" font-weight="700">User</text>
+        <text x="30" y="191" fill="#94a3b8" font-size="9.5" font-family="sans-serif">email, password_hash</text>
+        <text x="30" y="205" fill="#94a3b8" font-size="9.5" font-family="sans-serif">role, is_superadmin</text>
+        <text x="30" y="219" fill="#94a3b8" font-size="9.5" font-family="sans-serif">mfa_secret, locked_until</text>
+
+        <!-- Customers -->
+        <rect x="220" y="30" width="130" height="70" rx="6" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <rect x="220" y="30" width="130" height="22" rx="6" fill="rgba(42,52,68,0.6)"/>
+        <rect x="220" y="44" width="130" height="8" rx="0" fill="rgba(42,52,68,0.6)"/>
+        <text x="285" y="47" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif" font-weight="700">Customer</text>
+        <text x="230" y="66" fill="#94a3b8" font-size="9.5" font-family="sans-serif">name, contact, org_id</text>
+        <text x="230" y="80" fill="#94a3b8" font-size="9.5" font-family="sans-serif">device_count</text>
+
+        <!-- Devices -->
+        <rect x="220" y="145" width="140" height="110" rx="6" fill="#1a2030" stroke="#39d98a" stroke-width="1.5"/>
+        <rect x="220" y="145" width="140" height="22" rx="6" fill="rgba(57,217,138,0.1)"/>
+        <rect x="220" y="159" width="140" height="8" rx="0" fill="rgba(57,217,138,0.1)"/>
+        <text x="290" y="162" text-anchor="middle" fill="#39d98a" font-size="11" font-family="sans-serif" font-weight="700">Device</text>
+        <text x="230" y="182" fill="#94a3b8" font-size="9.5" font-family="sans-serif">serial, model, firmware</text>
+        <text x="230" y="196" fill="#94a3b8" font-size="9.5" font-family="sans-serif">configured, conn_method</text>
+        <text x="230" y="210" fill="#94a3b8" font-size="9.5" font-family="sans-serif">latest_score, latest_grade</text>
+        <text x="230" y="224" fill="#94a3b8" font-size="9.5" font-family="sans-serif">scan_frequency</text>
+        <text x="230" y="238" fill="#94a3b8" font-size="9.5" font-family="sans-serif">hidden_severities</text>
+
+        <!-- TSR -->
+        <rect x="420" y="100" width="120" height="80" rx="6" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <rect x="420" y="100" width="120" height="22" rx="6" fill="rgba(42,52,68,0.6)"/>
+        <rect x="420" y="114" width="120" height="8" rx="0" fill="rgba(42,52,68,0.6)"/>
+        <text x="480" y="117" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="sans-serif" font-weight="700">TSR</text>
+        <text x="430" y="137" fill="#94a3b8" font-size="9.5" font-family="sans-serif">filename, storage_key</text>
+        <text x="430" y="151" fill="#94a3b8" font-size="9.5" font-family="sans-serif">size, uploaded_at</text>
+        <text x="430" y="165" fill="#94a3b8" font-size="9.5" font-family="sans-serif">format (gui/api)</text>
+
+        <!-- Analysis -->
+        <rect x="420" y="215" width="130" height="90" rx="6" fill="#1a2030" stroke="#f5c451" stroke-width="1.5"/>
+        <rect x="420" y="215" width="130" height="22" rx="6" fill="rgba(245,196,81,0.1)"/>
+        <rect x="420" y="229" width="130" height="8" rx="0" fill="rgba(245,196,81,0.1)"/>
+        <text x="485" y="232" text-anchor="middle" fill="#f5c451" font-size="11" font-family="sans-serif" font-weight="700">Analysis</text>
+        <text x="430" y="252" fill="#94a3b8" font-size="9.5" font-family="sans-serif">status, score, grade</text>
+        <text x="430" y="266" fill="#94a3b8" font-size="9.5" font-family="sans-serif">result_json (snapshot)</text>
+        <text x="430" y="280" fill="#94a3b8" font-size="9.5" font-family="sans-serif">finding_count</text>
+        <text x="430" y="294" fill="#94a3b8" font-size="9.5" font-family="sans-serif">sev counts</text>
+
+        <!-- Finding -->
+        <rect x="620" y="145" width="140" height="140" rx="6" fill="#1a2030" stroke="#ff4d4d" stroke-width="1.5"/>
+        <rect x="620" y="145" width="140" height="22" rx="6" fill="rgba(255,77,77,0.1)"/>
+        <rect x="620" y="159" width="140" height="8" rx="0" fill="rgba(255,77,77,0.1)"/>
+        <text x="690" y="162" text-anchor="middle" fill="#ff4d4d" font-size="11" font-family="sans-serif" font-weight="700">Finding</text>
+        <text x="630" y="182" fill="#94a3b8" font-size="9.5" font-family="sans-serif">rule_id, severity, title</text>
+        <text x="630" y="196" fill="#94a3b8" font-size="9.5" font-family="sans-serif">status, assignee</text>
+        <text x="630" y="210" fill="#94a3b8" font-size="9.5" font-family="sans-serif">fingerprint (rule+obj)</text>
+        <text x="630" y="224" fill="#94a3b8" font-size="9.5" font-family="sans-serif">compliance mapping</text>
+        <text x="630" y="238" fill="#94a3b8" font-size="9.5" font-family="sans-serif">ticket_ref, due_date</text>
+        <text x="630" y="252" fill="#94a3b8" font-size="9.5" font-family="sans-serif">justification</text>
+        <text x="630" y="266" fill="#94a3b8" font-size="9.5" font-family="sans-serif">evidence, impact</text>
+        <text x="630" y="280" fill="#94a3b8" font-size="9.5" font-family="sans-serif">exploitability</text>
+
+        <!-- Supporting entities (compact) -->
+        <rect x="620" y="20" width="110" height="50" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="675" y="38" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="600">Rule</text>
+        <text x="675" y="54" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">source, CEL, enabled</text>
+
+        <rect x="740" y="20" width="100" height="50" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="790" y="38" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="600">AuditLog</text>
+        <text x="790" y="54" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">append-only</text>
+
+        <rect x="620" y="320" width="110" height="50" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="675" y="338" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="600">FindingComment</text>
+        <text x="675" y="354" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">type, content, ts</text>
+
+        <rect x="740" y="320" width="100" height="50" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="790" y="338" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="600">Schedule</text>
+        <text x="790" y="354" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">freq, tz, next_run</text>
+
+        <rect x="420" y="340" width="130" height="50" rx="5" fill="#111827" stroke="#2a3444"/>
+        <text x="485" y="358" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="sans-serif" font-weight="600">DriftEvent</text>
+        <text x="485" y="374" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">prev + curr analysis</text>
+
+        <!-- Relationship lines -->
+        <line x1="90" y1="110" x2="90" y2="155" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="95" y="140" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+        <line x1="160" y1="65" x2="220" y2="65" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="185" y="60" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+        <line x1="285" y1="100" x2="285" y2="145" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="290" y="130" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+        <line x1="360" y1="190" x2="420" y2="150" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="385" y="165" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+        <line x1="480" y1="180" x2="480" y2="215" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="485" y="202" fill="#6b7280" font-size="9" font-family="sans-serif">1:1</text>
+        <line x1="550" y1="250" x2="620" y2="220" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="578" y="240" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+        <line x1="690" y1="285" x2="690" y2="320" stroke="#2a3444" stroke-width="1.2"/>
+        <text x="695" y="308" fill="#6b7280" font-size="9" font-family="sans-serif">1:N</text>
+      </svg>
+    </div>
+
+    <h3>Finding Status Lifecycle</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Status</th><th>Meaning</th><th>Auto-transition</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-red">open</span></td><td>Newly detected by the rule engine</td><td>Auto-resolves if rule no longer fires on next scan</td></tr>
+        <tr><td><span class="badge badge-yellow">acknowledged</span></td><td>Operator has seen and accepted the finding</td><td>Auto-reopens if rule fires again after it was fixed</td></tr>
+        <tr><td><span class="badge badge-blue">in_progress</span></td><td>Remediation work underway</td><td>—</td></tr>
+        <tr><td><span class="badge badge-green">fixed</span></td><td>Remediation applied; verified on next scan</td><td>Auto-reopens if rule fires again</td></tr>
+        <tr><td><span class="badge badge-gray">false_positive</span></td><td>Not a real issue in this environment</td><td>—</td></tr>
+        <tr><td><span class="badge badge-gray">accepted_risk</span></td><td>Risk acknowledged with justification + expiry</td><td>—</td></tr>
+        <tr><td><span class="badge badge-gray">suppressed</span></td><td>Admin-level suppression, not shown to analysts</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 6. Rule Engine ══════════════════════════════════ -->
+  <section id="rule-engine">
+    <h2>6. Hybrid Rule Engine</h2>
+    <p>The rule engine has two tiers that are merged transparently before findings are returned to the API:</p>
+    <div class="card-grid">
+      <div class="card">
+        <h4>System Rules (~67)</h4>
+        <p>Python callables in <code>firewallguard/rules/catalog*.py</code>. Authoritative, evidence-gated, rich per-object findings. Mirrored into the DB by <code>seed_system_rules()</code> so the admin GUI can list them — but they cannot be edited by tenants.</p>
+      </div>
+      <div class="card">
+        <h4>Custom Rules (CEL)</h4>
+        <p>Tenant-authored expressions evaluated by <code>app/rule_engine.py</code>. Require CEL syntax, go through Draft → Submitted → Approved workflow. Run against the same snapshot as system rules.</p>
+      </div>
+    </div>
+    <p><strong>Suppressions</strong> — tenant-wide or device-wide overrides applied after pipeline evaluation. Can disable a rule or override its severity. Stored in <code>RuleSuppression</code> with optional expiry date.</p>
+    <p><strong>Firmware compliance</strong> — admin-configured <code>DeviceGeneration</code> + <code>FirmwareRecommendation</code> mappings; <code>check_firmware_compliance()</code> emits a Critical finding for unsupported or outdated firmware.</p>
+  </section>
+
+
+  <!-- ══ 7. Background Processing ═══════════════════════ -->
+  <section id="background">
+    <h2>7. Background Processing (Celery)</h2>
+    <h3>Analysis Worker Steps</h3>
+    <div class="card">
+      <div class="flow-step"><div class="num">1</div><p>Load TSR bytes from storage (S3 or local FS)</p></div>
+      <div class="flow-step"><div class="num">2</div><p>Detect format — GUI vs SonicOS API; normalize if API</p></div>
+      <div class="flow-step"><div class="num">3</div><p><code>make_pipeline_hooks(db, org_id, device_id)</code> — resolve custom rules + suppressions</p></div>
+      <div class="flow-step"><div class="num">4</div><p>Run pipeline: parse → rules (system + custom) → PSIRT intel → attack path correlation → scoring</p></div>
+      <div class="flow-step"><div class="num">5</div><p>Run firmware compliance check (admin-configured generation mappings)</p></div>
+      <div class="flow-step"><div class="num">6</div><p>Persist Analysis: <code>result_json</code>, score, grade, severity counts</p></div>
+      <div class="flow-step"><div class="num">7</div><p>Update Device: <code>latest_score</code>, <code>latest_grade</code>, <code>firmware</code>, <code>last_analysis_at</code></p></div>
+      <div class="flow-step"><div class="num">8</div><p><code>sync_findings()</code> — persist to workflow table; auto-reopen / auto-resolve</p></div>
+      <div class="flow-step"><div class="num">9</div><p><code>_compute_drift()</code> — compare against previous analysis; create DriftEvent</p></div>
+      <div class="flow-step"><div class="num">10</div><p><code>evaluate_and_send_alerts()</code> — email, webhook, Slack, Jira/ServiceNow</p></div>
+    </div>
+
+    <h3>Celery Beat Schedules</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Job</th><th>Frequency</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Scheduled scans</td><td>Per device (hourly/daily/weekly/monthly)</td><td>Pull TSR via SonicOS API + run analysis</td></tr>
+        <tr><td>PSIRT refresh</td><td>Daily</td><td>Check for new advisories; changelog if changed</td></tr>
+        <tr><td>Trial check</td><td>Daily</td><td>Downgrade expired trials to Free plan</td></tr>
+        <tr><td>Data retention purge</td><td>Daily</td><td>Delete analyses/TSRs beyond plan retention window</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 8. Frontend ════════════════════════════════════ -->
+  <section id="frontend">
+    <h2>8. Frontend Architecture (<code>frontend/</code>)</h2>
+    <p>Single-page application using <strong>hash routing</strong> — the entire SPA is deployed as static files served by Nginx; no server-side routing is required. Auth state lives in <code>App.tsx</code>; all child components are stateless with respect to auth.</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>lib/api.ts</code></td><td>HTTP wrapper over <code>fetch()</code> — JWT refresh on 401, retry, API token auth (<code>fgat_…</code> prefix)</td></tr>
+        <tr><td><code>lib/types.ts</code></td><td>TypeScript interfaces mirroring backend Pydantic models (User, Device, Finding, Rule, …)</td></tr>
+        <tr><td><code>lib/router.ts</code></td><td><code>useHashRoute()</code> hook + <code>navigate(path)</code> utility for hash-based routing</td></tr>
+        <tr><td><code>lib/ui.ts</code></td><td><code>gradeColor()</code>, <code>fmtDate()</code>, <code>fmtFrequency()</code> and other display utilities</td></tr>
+        <tr><td><code>lib/theme.ts</code></td><td>Dark / light theme toggle</td></tr>
+        <tr><td><code>App.tsx</code></td><td>Auth flow, mode (loading / login / app / demo), sidebar layout, route dispatch, nav visibility rules</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Visual Design System</h3>
+    <div class="card">
+      <p style="margin-bottom:10px"><strong>Color palette</strong></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <span style="background:#ff4d4d;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">Critical #ff4d4d</span>
+        <span style="background:#ff8a3d;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">High #ff8a3d</span>
+        <span style="background:#f5c451;color:#1a2030;padding:4px 12px;border-radius:4px;font-size:11px">Medium #f5c451</span>
+        <span style="background:#4a9eff;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">Low #4a9eff</span>
+        <span style="background:#7a879b;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">Info #7a879b</span>
+        <span style="background:#39d98a;color:#1a2030;padding:4px 12px;border-radius:4px;font-size:11px">A #39d98a</span>
+        <span style="background:#9ad94a;color:#1a2030;padding:4px 12px;border-radius:4px;font-size:11px">B #9ad94a</span>
+        <span style="background:#ff8a3d;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">D #ff8a3d</span>
+        <span style="background:#ff4d4d;color:#fff;padding:4px 12px;border-radius:4px;font-size:11px">F #ff4d4d</span>
+      </div>
+      <p><strong>Typography</strong> — JetBrains Mono for codes/serials/CVEs; Space Grotesk / Inter for UI text.</p>
+      <p><strong>Layout</strong> — Dark base <code>#0a0e16</code>, hairline borders <code>#2a3444</code>, 8px border-radius, dense data tables, subtle grid texture background.</p>
+    </div>
+  </section>
+
+
+  <!-- ══ 9. Components ══════════════════════════════════ -->
+  <section id="components">
+    <h2>9. Component Catalogue</h2>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Component</th><th>Route</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Login</strong></td><td><code>#/login</code></td><td>Email + password + TOTP MFA; SSO button; demo mode toggle</td></tr>
+        <tr><td><strong>Dashboard</strong></td><td><code>#/dashboard</code></td><td>Fleet KPIs, device distribution, compliance roll-up, recent audit activity</td></tr>
+        <tr><td><strong>Devices</strong></td><td><code>#/devices</code></td><td>Device list; register + configure modals; row click → detail</td></tr>
+        <tr><td><strong>DeviceDetail</strong></td><td><code>#/devices/:id</code></td><td>Device info card, TSR history, upload new TSR</td></tr>
+        <tr><td><strong>FindingsExplorer</strong></td><td><code>#/findings</code></td><td>Device list → per-device findings; TSR selection dropdown; comparison modal; visibility settings</td></tr>
+        <tr><td><strong>FindingDetail</strong></td><td><code>#/findings/:id</code></td><td>Single finding: evidence, impact, timeline, triage controls, ticket link</td></tr>
+        <tr><td><strong>Rules</strong></td><td><code>#/rules</code></td><td>Rule library; create modal (CEL builder); approval workflow</td></tr>
+        <tr><td><strong>RuleDetail</strong></td><td><code>#/rules/:id</code></td><td>Rule metadata, condition, test panel, version history, suppressions</td></tr>
+        <tr><td><strong>Compliance</strong></td><td><code>#/compliance</code></td><td>CIS / NIST / PCI / ISO / SonicWall BP matrices; per-device heat maps</td></tr>
+        <tr><td><strong>AnalysisView</strong></td><td><code>#/analysis/:id</code></td><td>Full report: score gauge, findings table, firmware intel, attack paths, export</td></tr>
+        <tr><td><strong>Trends</strong></td><td><code>#/trends</code></td><td>Recharts analytics: severity trends, device compliance, findings age, top rules</td></tr>
+        <tr><td><strong>Customers</strong></td><td><code>#/customers</code></td><td>MSP customer list + creation/edit modals (MSP orgs only)</td></tr>
+        <tr><td><strong>Integrations</strong></td><td><code>#/integrations</code></td><td>Slack, Teams, Jira, ServiceNow, Splunk, Sentinel, webhook configuration</td></tr>
+        <tr><td><strong>ApiTokens</strong></td><td><code>#/api-tokens</code></td><td>Generate, revoke, list tokens; scopes + expiry</td></tr>
+        <tr><td><strong>Organization</strong></td><td><code>#/settings/organization</code></td><td>Org name, billing, white-label branding, SSO config</td></tr>
+        <tr><td><strong>Profile</strong></td><td><code>#/settings/profile</code></td><td>User info, password, MFA enrollment, notification preferences</td></tr>
+        <tr><td><strong>Platform</strong></td><td><code>#/platform</code></td><td><em>Superadmin only</em> — cross-tenant overview (all orgs, devices, posture)</td></tr>
+        <tr><td><strong>TsrTester</strong></td><td><code>#/tsr-tester</code></td><td><em>Superadmin only</em> — analyze any TSR without persisting</td></tr>
+        <tr><td><strong>ApiFlowConfig</strong></td><td><code>#/api-config</code></td><td><em>Superadmin only</em> — SonicOS API workflow editor with per-step test harness</td></tr>
+        <tr><td><strong>ProductConfig</strong></td><td><code>#/product-config</code></td><td><em>Superadmin only</em> — device generations, model mappings, firmware compliance</td></tr>
+        <tr><td><strong>PlanManager</strong></td><td><code>#/plans</code></td><td><em>Superadmin only</em> — CRUD plans, pricing tiers, testing toggle</td></tr>
+        <tr><td><strong>ScoreGauge</strong></td><td>shared</td><td>270-degree SVG arc gauge; 0–100; A–F grade color-coded; animated</td></tr>
+        <tr><td><strong>UploadPanel</strong></td><td>shared</td><td>TSR file drop zone; requires pre-registered device; auto-detects serial</td></tr>
+        <tr><td><strong>Modal</strong></td><td>shared</td><td>Enterprise confirm / prompt dialogs via <code>useConfirm()</code> / <code>usePrompt()</code></td></tr>
+        <tr><td><strong>CelBuilder</strong></td><td>shared</td><td>Visual CEL expression builder with snapshot field dropdowns and live test</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 10. Data Flow ══════════════════════════════════ -->
+  <section id="data-flow">
+    <h2>10. Data Flow</h2>
+
+    <h3>10.1 TSR Upload → Findings Display</h3>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <svg viewBox="0 0 860 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;background:#0d1117;">
+        <defs>
+          <marker id="a1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L7,3 z" fill="#4f8cff" opacity="0.8"/>
+          </marker>
+        </defs>
+        <!-- Boxes -->
+        <rect x="10" y="100" width="90" height="50" rx="6" fill="#1a2030" stroke="#4f8cff" stroke-width="1.5"/>
+        <text x="55" y="122" text-anchor="middle" fill="#4f8cff" font-size="10" font-family="sans-serif" font-weight="700">Browser</text>
+        <text x="55" y="137" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">Upload TSR</text>
+
+        <rect x="140" y="80" width="110" height="90" rx="6" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <text x="195" y="102" text-anchor="middle" fill="#e2e8f0" font-size="10" font-family="sans-serif" font-weight="700">FastAPI</text>
+        <text x="195" y="118" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">validate serial</text>
+        <text x="195" y="132" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">save to storage</text>
+        <text x="195" y="146" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">queue Celery task</text>
+        <text x="195" y="160" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">return analysis id</text>
+
+        <rect x="290" y="20" width="100" height="50" rx="6" fill="#1a2030" stroke="#2a3444" stroke-width="1.5"/>
+        <text x="340" y="42" text-anchor="middle" fill="#e2e8f0" font-size="10" font-family="sans-serif" font-weight="700">Storage</text>
+        <text x="340" y="57" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">TSR bytes saved</text>
+
+        <rect x="290" y="80" width="100" height="50" rx="6" fill="#1a2030" stroke="#39d98a" stroke-width="1.5"/>
+        <text x="340" y="102" text-anchor="middle" fill="#39d98a" font-size="10" font-family="sans-serif" font-weight="700">Postgres</text>
+        <text x="340" y="117" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">Analysis row created</text>
+
+        <rect x="290" y="145" width="100" height="50" rx="6" fill="#1a2030" stroke="#ff8a3d" stroke-width="1.5"/>
+        <text x="340" y="167" text-anchor="middle" fill="#ff8a3d" font-size="10" font-family="sans-serif" font-weight="700">Redis</text>
+        <text x="340" y="182" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">task enqueued</text>
+
+        <rect x="430" y="50" width="130" height="160" rx="6" fill="#1a2030" stroke="#f5c451" stroke-width="1.5"/>
+        <text x="495" y="75" text-anchor="middle" fill="#f5c451" font-size="10" font-family="sans-serif" font-weight="700">Celery Worker</text>
+        <text x="495" y="93" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">load TSR</text>
+        <text x="495" y="107" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">normalize format</text>
+        <text x="495" y="121" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">run rules (67+)</text>
+        <text x="495" y="135" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">PSIRT matching</text>
+        <text x="495" y="149" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">score + grade</text>
+        <text x="495" y="163" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">sync findings</text>
+        <text x="495" y="177" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">drift detection</text>
+        <text x="495" y="191" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">send alerts</text>
+
+        <rect x="610" y="80" width="100" height="50" rx="6" fill="#1a2030" stroke="#39d98a" stroke-width="1.5"/>
+        <text x="660" y="102" text-anchor="middle" fill="#39d98a" font-size="10" font-family="sans-serif" font-weight="700">Postgres</text>
+        <text x="660" y="117" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">analysis + findings</text>
+
+        <rect x="750" y="80" width="90" height="50" rx="6" fill="#1a2030" stroke="#4f8cff" stroke-width="1.5"/>
+        <text x="795" y="102" text-anchor="middle" fill="#4f8cff" font-size="10" font-family="sans-serif" font-weight="700">Browser</text>
+        <text x="795" y="117" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="sans-serif">AnalysisView</text>
+
+        <!-- Arrows -->
+        <path d="M100,125 L140,125" stroke="#4f8cff" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M250,95 L290,45" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M250,120 L290,115" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M250,145 L290,160" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M390,170 L430,170" stroke="#ff8a3d" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M430,120 Q415,45 390,45" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M560,130 L610,110" stroke="#39d98a" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+        <path d="M710,105 L750,105" stroke="#4f8cff" stroke-width="1.2" marker-end="url(#a1)" fill="none"/>
+
+        <!-- Labels under arrows -->
+        <text x="120" y="118" fill="#6b7280" font-size="8.5" font-family="sans-serif">POST /tsrs</text>
+        <text x="700" y="99" fill="#6b7280" font-size="8.5" font-family="sans-serif">GET /analysis</text>
+      </svg>
+    </div>
+
+    <h3>10.2 API-Pull Flow (Alternative Ingest)</h3>
+    <div class="card">
+      <div class="flow-step"><div class="num">1</div><p>User clicks "Connect via API" for a pre-registered device</p></div>
+      <div class="flow-step"><div class="num">2</div><p>Frontend: <code>POST /devices/connect {device_id, hostname, port, username, password}</code></p></div>
+      <div class="flow-step"><div class="num">3</div><p>FastAPI resolves active <code>ApiFlowConfig</code>; runs templated steps (<code>{{ip}}</code>, <code>{{username}}</code>, etc.) or falls back to hardcoded <code>SonicOSClient</code></p></div>
+      <div class="flow-step"><div class="num">4</div><p>Validates serial matches registered device; encrypts + stores credentials</p></div>
+      <div class="flow-step"><div class="num">5</div><p><code>ingest_tsr_bytes()</code> — same pipeline as manual upload from this point forward</p></div>
+      <div class="flow-step"><div class="num">6</div><p>Subsequent scans run automatically on schedule via Celery Beat</p></div>
+    </div>
+
+    <h3>10.3 Snapshot-Based Findings</h3>
+    <p>The <code>result_json</code> field in the Analysis table stores the <strong>complete pipeline output snapshot</strong> as a JSON dict. When a user selects an older TSR in the findings explorer, the frontend fetches <code>GET /analyses/{id}/findings</code> which reads from that snapshot — findings appear exactly as they were at analysis time. Live triage state (status, assignee, comments) is fetched separately from the <code>findings</code> workflow table and merged on the client.</p>
+  </section>
+
+
+  <!-- ══ 11. Auth & Multi-Tenancy ════════════════════════ -->
+  <section id="auth">
+    <h2>11. Authentication &amp; Multi-Tenancy</h2>
+
+    <h3>11.1 Authentication Methods</h3>
+    <div class="card-grid">
+      <div class="card">
+        <h4>Password (JWT)</h4>
+        <ul class="feat">
+          <li>bcrypt hashing (pinned 4.0.1)</li>
+          <li>Access token: 60-min TTL (HS256)</li>
+          <li>Refresh token: 14-day TTL, rotated on use</li>
+          <li>Lockout: 5 failed attempts → 15-min block</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>MFA (TOTP)</h4>
+        <ul class="feat">
+          <li>RFC 6238 TOTP (6-digit, 30-second window)</li>
+          <li>QR code enrollment via <code>mfa.py</code></li>
+          <li>Short-lived MFA token (5-min) between password and OTP steps</li>
+          <li>bcrypt-hashed single-use backup codes</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>SSO (OIDC / SAML)</h4>
+        <ul class="feat">
+          <li>OIDC: JWKS-verified — Okta, Microsoft Entra, Google</li>
+          <li>JIT user provisioning on first login</li>
+          <li>Group claim → org role mapping</li>
+          <li>Tokens returned via <code>#/sso?access=…&amp;refresh=…</code> fragment</li>
+          <li>SAML 2.0 supported (sig validation not enforced; OIDC is production path)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>API Tokens</h4>
+        <ul class="feat">
+          <li>Format: <code>fgat_&lt;random&gt;</code> (prefix for log filtering)</li>
+          <li>bcrypt hash stored; plaintext shown only once</li>
+          <li>Scoped + expiry configurable</li>
+          <li>Resolve to a transient service-principal User scoped to the token's org</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>11.2 Tenant Isolation</h3>
+    <p>Every API endpoint extracts <code>organization_id</code> from the <strong>JWT payload</strong> — never from request parameters. All database queries are filtered by <code>WHERE organization_id = user.organization_id</code>. Cross-org access returns 404 (not 403, to avoid information leakage).</p>
+
+    <h3>11.3 RBAC Roles</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Role</th><th>Rank</th><th>Capabilities</th></tr></thead>
+      <tbody>
+        <tr><td><span class="role-owner">Owner</span></td><td>4</td><td>Full control including billing, org deletion, all below</td></tr>
+        <tr><td><span class="role-admin">Admin</span></td><td>3</td><td>User management, integrations, rules, schedules, all data</td></tr>
+        <tr><td><span class="role-msp">MspOperator</span></td><td>2</td><td>Cross-customer access within the MSP org (effective Analyst per customer)</td></tr>
+        <tr><td><span class="role-analyst">Analyst</span></td><td>1</td><td>Upload TSRs, run scans, triage findings, change finding states</td></tr>
+        <tr><td><span class="role-viewer">Viewer</span></td><td>0</td><td>Read-only — no uploads, no state changes</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>11.4 MSP Multi-Tenancy</h3>
+    <p>An Organization with <code>is_msp = true</code> owns many <strong>Customer</strong> rows (managed clients). Each Device belongs to a Customer. The MSP frontend shows a customer list; selecting a customer scopes all device/finding views to that customer's data.</p>
+
+    <h3>11.5 Superadmin (Cross-Tenant Operator)</h3>
+    <p><code>User.is_superadmin</code> is set only out-of-band during bootstrap (<code>--superadmin</code> flag). It grants access to <code>/platform/*</code> (cross-tenant overview), <code>/tsr-tester</code>, and <code>/api-config</code>. It is never exposed through the tenant-facing API and can never be set by API-token principals.</p>
+  </section>
+
+
+  <!-- ══ 12. Infrastructure ═════════════════════════════ -->
+  <section id="infra">
+    <h2>12. Infrastructure</h2>
+
+    <h3>12.1 Docker Compose Services</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Service</th><th>Image</th><th>Port</th><th>Purpose</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td><strong>db</strong></td><td>postgres:16</td><td>5432</td><td>Primary database (creds: fgai/fgai/fgai)</td><td>—</td></tr>
+        <tr><td><strong>redis</strong></td><td>redis:7</td><td>6379</td><td>Celery broker + result backend + scan locks</td><td>—</td></tr>
+        <tr><td><strong>api</strong></td><td>./backend</td><td>8000</td><td>FastAPI / Uvicorn service</td><td>db (healthy), redis</td></tr>
+        <tr><td><strong>worker</strong></td><td>./backend</td><td>—</td><td>Celery analysis worker + Beat</td><td>db, redis</td></tr>
+        <tr><td><strong>web</strong></td><td>./frontend</td><td>8080</td><td>Nginx serving React SPA; proxies /api → :8000</td><td>api</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>12.2 Redis Usage</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Key / Queue</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>celery:1</code></td><td>Celery task queue (broker)</td></tr>
+        <tr><td><code>celery:2</code></td><td>Celery result backend</td></tr>
+        <tr><td><code>fgai:scan:org:{id}:lock</code></td><td>Distributed lock — limits concurrent scans per org</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>12.3 Key Environment Variables</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>FGAI_DATABASE_URL</code></td><td>PostgreSQL connection string</td></tr>
+        <tr><td><code>FGAI_REDIS_URL</code></td><td>Redis connection string</td></tr>
+        <tr><td><code>FGAI_JWT_SECRET</code></td><td>HS256 signing key (change in production)</td></tr>
+        <tr><td><code>FGAI_CREDENTIAL_ENCRYPTION_KEY</code></td><td>Fernet key for stored secrets</td></tr>
+        <tr><td><code>FGAI_STORAGE_BACKEND</code></td><td><code>s3</code> or <code>local</code></td></tr>
+        <tr><td><code>FGAI_STRIPE_API_KEY</code></td><td>Stripe integration (omit → local dev mode)</td></tr>
+        <tr><td><code>FGAI_LOCKOUT_THRESHOLD</code></td><td>Failed logins before lockout (default 5)</td></tr>
+        <tr><td><code>FGAI_LOCKOUT_MINUTES</code></td><td>Lockout duration (default 15)</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>12.4 Database Migrations (Alembic)</h3>
+    <p>Migrations are versioned sequentially. <code>alembic/env.py</code> reads the DB URL from Settings. Each migration includes dialect guards so up/down/up cycles on PostgreSQL are safe. Run <code>alembic upgrade head</code> inside the API container to apply all migrations.</p>
+  </section>
+
+
+  <!-- ══ 13. Integrations ═══════════════════════════════ -->
+  <section id="integrations">
+    <h2>13. External Integrations</h2>
+    <div class="card-grid">
+      <div class="card-sm">
+        <h4>Email (SMTP)</h4>
+        <p>Alert subscriptions; fires on new_critical, firmware_vuln, service_disabled, critical_drift. Jinja2 templates per alert type.</p>
+      </div>
+      <div class="card-sm">
+        <h4>Webhook</h4>
+        <p>HMAC-SHA256 signed JSON payload; per-org integration config; receiver at <code>/integrations/webhooks/{system}/{token}</code>.</p>
+      </div>
+      <div class="card-sm">
+        <h4>Slack / Teams</h4>
+        <p>Finding summaries posted to configured channel via incoming webhook. Interactive triage buttons (Phase 3).</p>
+      </div>
+      <div class="card-sm">
+        <h4>Jira</h4>
+        <p>OAuth/PAT; creates issues on finding acknowledgement (if auto_create set); bidirectional status sync via webhook.</p>
+      </div>
+      <div class="card-sm">
+        <h4>ServiceNow</h4>
+        <p>REST API; creates incidents; syncs status back to Finding.ticket_status.</p>
+      </div>
+      <div class="card-sm">
+        <h4>Stripe</h4>
+        <p>Plan subscriptions, trial workflow, usage enforcement. Local mode if key not set (dev). Webhook at <code>/billing/webhook</code>.</p>
+      </div>
+      <div class="card-sm">
+        <h4>SonicOS REST API</h4>
+        <p>Configurable multi-step workflow (Gen7/Gen8). Templated steps, per-step tracing, auth header redaction. Fallback to hardcoded <code>SonicOSClient</code>.</p>
+      </div>
+      <div class="card-sm">
+        <h4>PSIRT Feed</h4>
+        <p>Daily refresh of <code>psirt.json</code>; content-hash detection; changelog on change; ops email notification.</p>
+      </div>
+      <div class="card-sm">
+        <h4>Splunk / Sentinel</h4>
+        <p>SIEM integration types supported; forwards finding events to configured HEC endpoint or Log Analytics workspace.</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══ 14. Phase Roadmap ══════════════════════════════ -->
+  <section id="phases">
+    <h2>14. Phase Roadmap</h2>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Phase</th><th>Status</th><th>Key Features</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Phase 1 — MVP</strong></td>
+          <td><span class="badge badge-green">Complete</span></td>
+          <td>Tenant isolation, RBAC, MFA, manual TSR upload, analysis pipeline, finding workflow, PDF/CSV export, email alerts, dashboard</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 2</strong></td>
+          <td><span class="badge badge-green">Complete</span></td>
+          <td>SonicOS API pull, CEL rule editor + visual builder, approval workflow, compliance dashboard, Slack, drift comparison, dual-format TSR support</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 3</strong></td>
+          <td><span class="badge badge-green">Complete</span></td>
+          <td>OIDC + SAML SSO, MSP multi-tenancy, Jira/ServiceNow, Stripe billing + trials, PSIRT auto-refresh, device-centric findings view</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 4</strong></td>
+          <td><span class="badge badge-green">Complete</span></td>
+          <td>SOC 2 preparation (audit log, security headers, data retention, GDPR), multi-region deployment, white-label branding, mobile responsive, Recharts analytics</td>
+        </tr>
+        <tr>
+          <td><strong>Post-Phase 4</strong></td>
+          <td><span class="badge badge-green">Complete</span></td>
+          <td>Device onboarding two-step workflow, TSR comparison modal, findings visibility settings, configurable SonicOS API flow, superadmin TSR tester, license system fixes</td>
+        </tr>
+      </tbody>
+    </table></div>
+  </section>
+
+
+  <!-- ══ 15. Key Design Decisions ═══════════════════════ -->
+  <section id="decisions">
+    <h2>15. Key Design Decisions</h2>
+    <div class="card-grid">
+      <div class="card">
+        <h4>DB-Agnostic Analysis Engine</h4>
+        <p>The <code>firewallguard/</code> package has zero dependency on SQLAlchemy or the HTTP layer. The pipeline returns a plain JSON-serializable dict — stored in <code>result_json</code> and reloadable at any time. This enables standalone CLI use, easy testing, and snapshot-based historical findings.</p>
+      </div>
+      <div class="card">
+        <h4>Dual-Format TSR Normalization</h4>
+        <p>GUI and SonicOS API TSRs look completely different at the byte level. The normalizer detects format and rewrites API TSRs to GUI-equivalent text — one code path, one rule set, verified parity (identical findings, scores, and severity counts).</p>
+      </div>
+      <div class="card">
+        <h4>Hybrid Rule Engine</h4>
+        <p>System rules (Python) are authoritative and run unconditionally. Custom rules (CEL) are layered on top. Suppressions are applied last. This separation keeps the core rule set stable while allowing per-tenant customization without code changes.</p>
+      </div>
+      <div class="card">
+        <h4>JWT Tenant Isolation</h4>
+        <p><code>organization_id</code> lives in the JWT payload, set at login. No endpoint accepts it as a query param. Cross-org access returns 404 — not 403 — to avoid resource enumeration.</p>
+      </div>
+      <div class="card">
+        <h4>Finding Fingerprinting</h4>
+        <p>Fingerprint = <code>rule_id + object_name + object_type</code>. Enables auto-reopen (rule fires again after fix), auto-resolve (rule no longer fires), and drift detection across scans — all handled transparently by <code>sync_findings()</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Configurable API Flow</h4>
+        <p>The SonicOS API workflow (login URL, auth type, TSR export path, success conditions) is editable from the superadmin UI without code changes. Templated steps support <code>{{ip}}</code>, <code>{{username}}</code>, and extracted variables. Per-step tracing (URL, status, body, time) with auth header redaction.</p>
+      </div>
+      <div class="card">
+        <h4>Hash-Based SPA Routing</h4>
+        <p>All routes use URL hashes (<code>#/devices</code>, <code>#/findings/123</code>). The entire frontend deploys as static files with no server-side routing configuration — Nginx serves <code>index.html</code> for every request and the client handles the rest.</p>
+      </div>
+      <div class="card">
+        <h4>License-Driven Scan Frequency</h4>
+        <p>Plans define <code>analysis_frequency</code> (monthly / weekly / daily / hourly). Devices inherit frequency at registration. Schedules are enforced at the API layer by <code>enforce_analysis_frequency()</code>. Redis slot management prevents concurrent scan overload per org.</p>
+      </div>
+    </div>
+
+    <h3>Security Controls Summary</h3>
+    <ul class="feat">
+      <li><strong>Passwords</strong> — bcrypt (pinned 4.0.1 for passlib compatibility)</li>
+      <li><strong>Secrets</strong> — Fernet encryption for device credentials and integration configs</li>
+      <li><strong>Tokens</strong> — JWT HS256; API tokens bcrypt-hashed; prefix <code>fgat_</code> for log filtering</li>
+      <li><strong>Headers</strong> — HSTS, CSP, X-Frame-Options, X-Content-Type-Options</li>
+      <li><strong>Rate limiting</strong> — Per-IP fixed-window middleware</li>
+      <li><strong>Audit</strong> — Append-only log; no deletes; captures all privileged actions</li>
+      <li><strong>Lockout</strong> — 5 failed logins → 15-minute account lock</li>
+      <li><strong>PSIRT</strong> — Daily advisory refresh; Critical finding for affected firmware</li>
+      <li><strong>SBOM</strong> — CycloneDX <code>sbom.json</code> generated by <code>cyclonedx-bom</code></li>
+    </ul>
+  </section>
+
+  <hr/>
+  <p style="text-align:center;color:#4a5568;font-size:12px;padding-bottom:40px;">
+    FirewallGuard AI — Architecture Reference · Generated July 2026 · All phases complete
+  </p>
+
+</main>
+
+<script>
+  // Highlight active nav link on scroll
+  const links = document.querySelectorAll('nav ul li a[href^="#"]');
+  const sections = Array.from(links).map(l => document.querySelector(l.getAttribute('href'))).filter(Boolean);
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = Array.from(links).find(l => l.getAttribute('href') === '#' + e.target.id);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+FirewallGuard AI — Project Summary
+===================================
+Last updated: 23 June 2026
+
+WHAT IT IS
+----------
+Multi-tenant SaaS platform for continuous SonicWall firewall security posture
+analysis. Upload a Tech Support Report (TSR) or connect via SonicOS API, and
+FirewallGuard AI returns a scored, prioritised set of findings, correlated
+attack paths, firmware vulnerability intelligence, and reports.
+
+STACK
+-----
+Backend:  Python 3.12, FastAPI, SQLAlchemy 2.0, PostgreSQL, Redis, Celery
+Frontend: React 18 + TypeScript + Vite + Tailwind (dark-theme security console)
+Deploy:   Docker Compose (dev), target Kubernetes on AWS (prod)
+
+ARCHITECTURE
+------------
+firewallguard/          Analysis engine (pure Python, no DB dependency)
+  tsr/                  TSR reader + parser (60+ section parsers)
+  rules/                Rule engine + ~68 evidence-gated detection rules
+  intelligence/         PSIRT/CVE matching, attack-path correlation
+  analytics/            0-100 scoring, A-F grading, config drift
+  report/               PDF (ReportLab), CSV, JSON exports
+  pipeline.py           Orchestrator: parse -> rules -> firmware -> correlate -> score
+
+app/                    FastAPI service layer
+  models.py             SQLAlchemy ORM (multi-tenant) + configured flag, hidden_severities
+  security.py           JWT, bcrypt, RBAC, MFA, lockout, API tokens
+  rule_engine.py        CEL evaluator, _SYSTEM_RULE_CEL defaults,
+                        check_firmware_compliance(), seed_system_rules()
+  findings_sync.py      Persist pipeline findings; auto-reopen/resolve lifecycle
+  tasks.py              Celery workers; firmware check runs before storing counts
+  routers/              Auth, devices (registration + connect + visibility),
+                        findings (snapshot-based + category + analysis_id),
+                        rules (modal creation + categories), platform, etc.
+
+frontend/               React SPA
+  Devices.tsx           Device list with modal registration, Configure modal,
+                        row click to detail, fixed action menu
+  DeviceDetail.tsx      Device info card, TSR history with delete, upload new TSR,
+                        Go to Findings button
+  FindingsExplorer.tsx  Device-centric: device list → device-specific view with
+                        TSR selector, comparison modal, visibility settings,
+                        category filter, clickable KPI cards
+  UploadPanel.tsx       TSR upload for pre-registered devices
+  Rules.tsx             Rule library with modal-based creation + category dropdown
+  Dashboard.tsx         Fleet KPI cards, trend chart, compliance bars
+  Platform.tsx          Cross-tenant operator dashboard
+
+KEY ENDPOINTS
+-------------
+http://localhost:8080     Production web app (nginx)
+http://localhost:8000     API (docs at /docs)
+
+RUNNING LOCALLY
+---------------
+docker compose up -d
+docker compose exec api alembic upgrade heads
+docker compose exec api python -m app.bootstrap --seed --superadmin --email tm328682@gmail.com --password "TCPip@00"
+
+SUPERADMIN ACCOUNT
+------------------
+Email:  tm328682@gmail.com
+Password: TCPip@00
+Role:   owner + is_superadmin = true
+
+RECENT ENHANCEMENTS (June 2026)
+--------------------------------
+- Device onboarding: two-step registration → configuration with serial validation
+- Device Details page with TSR history, delete TSR, upload new TSR, Go to Findings
+- Findings page redesigned as device-centric: device list → device-specific view
+- TSR selection dropdown in findings (snapshot-based, preserves findings across scans)
+- TSR comparison: summary + detailed side-by-side table + Print/PDF export
+- Findings visibility settings: global + per-device with "Inherit from Global"
+- Category column + filter in findings table
+- Clickable KPI cards (quick-filter findings by severity/status)
+- Modal-based device registration and rule creation
+- Device actions menu positioning and propagation fixes
+- PDF download now uses Technical Report (not Executive)
+- Severity counts only include active-status findings (open/acknowledged/in_progress)
+- Device model: configured flag, hidden_severities, created_at
+- Organization model: hidden_severities
+- API: POST /devices (register), GET /devices/{id}/detail, DELETE /tsrs/{id},
+       GET /analyses/{id}/findings (snapshot), PATCH /devices/{id}/visibility,
+       PATCH /organization/visibility
+- Frontend: DeviceDetail.tsx, modal-based flows, Configure Filter UI, comparison modal
+
+MIGRATIONS
+----------
+- a1b2c3d4e5f6: device configured flag
+- b2c3d4e5f6a7: missing device columns (last_analysis_at, severity counts)
+- c3d4e5f6a7b8: hidden_severities columns (org + device)
+
+TESTING
+-------
+cd backend && python -m pytest tests/ -v
+(Set FGAI_TEST_TSR env var to enable TSR-dependent engine tests)
