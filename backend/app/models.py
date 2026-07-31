@@ -347,7 +347,9 @@ class Finding(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
     device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
-    analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id"), index=True)
+    analysis_id: Mapped[Optional[str]] = mapped_column(ForeignKey("analyses.id"), index=True, nullable=True)
+
+    source: Mapped[str] = mapped_column(String(16), default="parser", server_default="parser")  # "parser" | "manual"
 
     rule_id: Mapped[str] = mapped_column(String(64), index=True)
     rule_version: Mapped[int] = mapped_column(Integer, default=1)

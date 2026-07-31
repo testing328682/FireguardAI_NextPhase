@@ -476,7 +476,7 @@ class FindingCommentCreate(BaseModel):
 class FindingSummary(BaseModel):
     id: str
     device_id: str
-    analysis_id: str
+    analysis_id: Optional[str] = None
     rule_id: str
     severity: str
     title: str
@@ -490,6 +490,7 @@ class FindingSummary(BaseModel):
     ticket_ref: str
     first_seen_at: datetime
     last_seen_at: datetime
+    source: str = "parser"
 
     class Config:
         from_attributes = True
@@ -520,6 +521,34 @@ class FindingTransition(BaseModel):
     justification: Optional[str] = None           # required for FP / accepted-risk
     accepted_risk_expiry: Optional[datetime] = None   # required for accepted-risk
     ticket_ref: Optional[str] = None
+
+
+class ManualFindingUpdate(BaseModel):
+    """Fields for updating a manual finding (all optional — only set what changes)."""
+    severity: Optional[str] = Field(default=None, pattern="^(Critical|High|Medium|Low|Info)$")
+    title: Optional[str] = Field(default=None, min_length=1, max_length=512)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    object_name: Optional[str] = Field(default=None, max_length=255)
+    status: Optional[str] = Field(default=None, pattern="^(open|acknowledged|in_progress|fixed|false_positive|accepted_risk)$")
+    description: Optional[str] = Field(default=None, max_length=4096)
+    business_impact: Optional[str] = Field(default=None, max_length=2048)
+    technical_impact: Optional[str] = Field(default=None, max_length=2048)
+    remediation: Optional[str] = Field(default=None, max_length=4096)
+    evidence: Optional[str] = Field(default=None, max_length=4096)
+
+
+class ManualFindingCreate(BaseModel):
+    """Fields for creating a manual finding on a device."""
+    severity: str = Field(pattern="^(Critical|High|Medium|Low|Info)$")
+    title: str = Field(min_length=1, max_length=512)
+    category: str = Field(min_length=1, max_length=128)
+    object_name: str = Field(default="", max_length=255)
+    status: str = Field(pattern="^(open|acknowledged|in_progress|fixed|false_positive|accepted_risk)$")
+    description: str = Field(default="", max_length=4096)
+    business_impact: str = Field(default="", max_length=2048)
+    technical_impact: str = Field(default="", max_length=2048)
+    remediation: str = Field(default="", max_length=4096)
+    evidence: str = Field(default="", max_length=4096)
 
 
 class FindingAssign(BaseModel):

@@ -23,6 +23,7 @@ from ..models import (
 from ..schemas import (
     FindingSummary, FindingDetail, FindingTransition, FindingAssign,
     FindingCommentOut, FindingCommentCreate, BulkTransition,
+    ManualFindingUpdate,
 )
 from ..security import current_user, require_role, _ROLE_RANK
 from .. import audit
@@ -297,6 +298,7 @@ def list_analysis_findings(analysis_id: str,
             "device_id": analysis.device_id,
             "analysis_id": analysis.id,
             "rule_id": sf.get("rule_id", ""),
+            "source": live.source if live else "parser",
             "severity": sf.get("severity", "Info"),
             "title": sf.get("title", ""),
             "category": sf.get("category", ""),
@@ -310,6 +312,44 @@ def list_analysis_findings(analysis_id: str,
             "first_seen_at": live.first_seen_at if live else analysis.created_at,
             "last_seen_at": live.last_seen_at if live else analysis.created_at,
         })
+
+    # Append manual findings (not in any analysis snapshot).
+    manual_findings = db.scalars(select(Finding).where(
+        Finding.device_id == analysis.device_id,
+        Finding.source == "manual")).all()
+    for mf in manual_findings:
+        if severity and mf.severity != severity:
+            continue
+        if status_ and mf.status.value != status_.value:
+            continue
+        if category and mf.category != category:
+            continue
+        if q:
+            ql = q.lower()
+            title = (mf.title or "").lower()
+            obj = (mf.object_name or "").lower()
+            if ql not in title and ql not in obj:
+                continue
+        out.append({
+            "id": mf.id,
+            "device_id": mf.device_id,
+            "analysis_id": mf.analysis_id or "",
+            "rule_id": mf.rule_id,
+            "severity": mf.severity,
+            "title": mf.title,
+            "category": mf.category,
+            "status": mf.status.value,
+            "exploitability": mf.exploitability,
+            "object_name": mf.object_name,
+            "object_type": mf.object_type,
+            "assignee_id": mf.assignee_id,
+            "due_date": mf.due_date,
+            "ticket_ref": mf.ticket_ref,
+            "first_seen_at": mf.first_seen_at,
+            "last_seen_at": mf.last_seen_at,
+            "source": "manual",
+        })
+
     return out
 
 
@@ -334,3 +374,54 @@ def bulk_transition(body: BulkTransition, request: Request,
             db.rollback()
             results["skipped"].append(fid)
     return results
+
+
+# ── Manual Finding Edit / Delete ──────────────────────────────────────────
+
+@router.put("/findings/{finding_id}", response_model=FindingDetail)
+def update_manual_finding(
+    finding_id: str,
+    body: ManualFindingUpdate,
+    user: User = Depends(require_role(Role.analyst)),
+    db: Session = Depends(get_db),
+) -> Finding:
+    """Update a manual finding's fields (parser findings are read-only)."""
+    f = db.get(Finding, finding_id)
+    if f is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if f.organization_id != user.organization_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if f.source != "manual":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Only manually created findings can be edited")
+    updates = body.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        if k == "status":
+            setattr(f, k, FindingStatus(v))
+        elif k == "evidence":
+            setattr(f, k, [v] if v else [])
+        else:
+            setattr(f, k, v)
+    db.commit()
+    db.refresh(f)
+    return f
+
+
+@router.delete("/findings/{finding_id}")
+def delete_manual_finding(
+    finding_id: str,
+    user: User = Depends(require_role(Role.analyst)),
+    db: Session = Depends(get_db),
+):
+    """Delete a manual finding (parser findings cannot be deleted)."""
+    f = db.scalars(select(Finding).where(Finding.id == finding_id)).first()
+    if f is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if f.organization_id != user.organization_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if f.source != "manual":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Only manually created findings can be deleted")
+    db.delete(f)
+    db.commit()
+    return {"ok": True}

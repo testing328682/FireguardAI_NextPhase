@@ -20,7 +20,7 @@ from ..schemas import (
     DeviceRegisterRequest, DeviceLicenseChange, DeviceConnectRequest, DeviceConnectResponse,
     DeviceDetailOut, TsrHistoryItem, ConnectStep,
     DeviceCredentialOut, DeviceCredentialUpdate, CredentialTestResult,
-    ApiConnectionLogOut,
+    ApiConnectionLogOut, ManualFindingCreate,
 )
 from fastapi import Response
 from ..security import current_user, require_role
@@ -1132,3 +1132,60 @@ def recommission_device(device_id: str,
                      resource_type="device", resource_id=device.id, user=user,
                      after={"serial": device.serial})
     return device
+
+
+# ── Manual Findings ───────────────────────────────────────────────────────
+
+@router.post("/devices/{device_id}/findings", status_code=status.HTTP_201_CREATED)
+def create_manual_finding(
+    device_id: str,
+    body: ManualFindingCreate,
+    request: Request,
+    user: User = Depends(require_role(Role.analyst)),
+    db: Session = Depends(get_db),
+):
+    """Create a manual finding for a device.
+
+    Manual findings persist across re-analyses, participate in scoring,
+    and appear in all dashboards and reports identically to parser findings.
+    """
+    from uuid import uuid4
+    from ..models import Finding, FindingStatus
+
+    device = db.get(Device, device_id)
+    if device is None or device.organization_id != user.organization_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+
+    now = datetime.now(timezone.utc)
+    fp = f"MANUAL::{body.object_name}"
+    finding = Finding(
+        id=str(uuid4()),
+        organization_id=user.organization_id,
+        device_id=device_id,
+        analysis_id=None,
+        source="manual",
+        rule_id="MANUAL",
+        fingerprint=fp,
+        severity=body.severity,
+        title=body.title,
+        category=body.category,
+        object_name=body.object_name,
+        object_type="manual",
+        status=FindingStatus(body.status),
+        description=body.description,
+        business_impact=body.business_impact,
+        technical_impact=body.technical_impact,
+        remediation=body.remediation,
+        evidence=[body.evidence] if body.evidence else [],
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db.add(finding)
+    db.commit()
+    db.refresh(finding)
+
+    audit.log_action(db, organization_id=device.organization_id,
+                     action="manual_finding_create", resource_type="finding",
+                     resource_id=finding.id, user=user, request=request)
+
+    return {"id": finding.id, "severity": finding.severity, "title": finding.title}

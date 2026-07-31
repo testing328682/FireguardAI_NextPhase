@@ -56,6 +56,7 @@ export interface FindingRow {
   ticket_ref: string;
   first_seen_at: string;
   last_seen_at: string;
+  source?: string;
 }
 
 export interface FindingComment {

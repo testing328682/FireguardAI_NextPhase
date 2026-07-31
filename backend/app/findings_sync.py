@@ -98,10 +98,13 @@ def sync_findings(db, analysis: Analysis) -> dict[str, Any]:
     reopen_expired_accepted_risk(db, analysis.device_id)
 
     # Existing findings on this device, indexed by fingerprint (latest wins).
+    # Manual findings are excluded from reconciliation — they persist independently.
     existing = db.scalars(select(Finding).where(
         Finding.device_id == analysis.device_id)).all()
     by_fp: dict[str, Finding] = {}
     for f in existing:
+        if f.source == "manual":
+            continue
         by_fp[f.fingerprint] = f
 
     seen: set[str] = set()
@@ -148,9 +151,12 @@ def sync_findings(db, analysis: Analysis) -> dict[str, Any]:
             updated += 1
 
     # Findings that disappeared from the scan: auto-resolve active ones.
+    # Manual findings are never auto-resolved.
     resolved = 0
     for fp, f in by_fp.items():
         if fp in seen:
+            continue
+        if f.source == "manual":
             continue
         if f.status in _ACTIVE:
             f.status = FindingStatus.fixed

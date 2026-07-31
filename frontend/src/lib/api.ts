@@ -242,6 +242,22 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  createManualFinding: (deviceId: string, data: {
+    severity: string; title: string; category: string;
+    object_name?: string; status: string;
+    description?: string; business_impact?: string;
+    technical_impact?: string; remediation?: string; evidence?: string;
+  }) =>
+    json<{ id: string; severity: string; title: string }>(
+      `/devices/${deviceId}/findings`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) },
+    ),
+  updateManualFinding: (findingId: string, data: Record<string, unknown>) =>
+    json<FindingRow>(`/findings/${findingId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteManualFinding: (findingId: string) =>
+    json<void>(`/findings/${findingId}`, { method: "DELETE" }),
 
   auditLog: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(params).toString();

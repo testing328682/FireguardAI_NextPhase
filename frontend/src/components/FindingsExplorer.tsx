@@ -412,6 +412,13 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
   const [detailFindings1, setDetailFindings1] = useState<FindingRow[]>([]);
   const [detailFindings2, setDetailFindings2] = useState<FindingRow[]>([]);
   const [visOpen, setVisOpen] = useState(false);
+  const [addFindingOpen, setAddFindingOpen] = useState(false);
+  const [newFinding, setNewFinding] = useState({ severity: "Medium", title: "", category: "", object_name: "", status: "open", description: "", business_impact: "", technical_impact: "", remediation: "", evidence: "" });
+  const [editingFinding, setEditingFinding] = useState<FindingRow | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [newFindingBusy, setNewFindingBusy] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     api.listDeviceAnalyses(deviceId).then((a) => {
@@ -700,6 +707,14 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
         </div>
       </div>
 
+      {/* ── Success toast ────────────────────────────────────────────── */}
+      {successMsg && (
+        <div className="fixed top-4 right-4 z-50 bg-[#39d98a]/15 border border-[#39d98a]/40 rounded-lg px-4 py-3 flex items-center gap-2 animate-pulse-once shadow-lg">
+          <span className="text-[#39d98a] text-sm font-mono">{successMsg}</span>
+          <button onClick={() => setSuccessMsg(null)} className="text-ink-400 hover:text-ink-200 ml-2">✕</button>
+        </div>
+      )}
+
       {/* ── SA top-row widgets (device-scoped) ────────────────────────── */}
       {deviceSummary && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -807,6 +822,180 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Add Finding modal ────────────────────────────────── */}
+      {addFindingOpen && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/50 fade-in" onClick={() => setAddFindingOpen(false)} />
+          <div className="fixed inset-0 z-40 grid place-items-center pointer-events-none">
+            <div className="pointer-events-auto bg-base-800 border border-base-500 rounded-panel shadow-2xl w-full max-w-lg p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+              <h2 className="font-display text-lg font-semibold text-ink-100 mb-4">{editingFinding ? "Edit Manual Finding" : "Add Manual Finding"}</h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Severity</span>
+                    <select value={newFinding.severity} onChange={(e) => setNewFinding((f) => ({ ...f, severity: e.target.value }))}
+                            className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent">
+                      {["Critical", "High", "Medium", "Low", "Info"].map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Status</span>
+                    <select value={newFinding.status} onChange={(e) => setNewFinding((f) => ({ ...f, status: e.target.value }))}
+                            className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent">
+                      {[{ v: "open", l: "Open" }, { v: "in_progress", l: "In Progress" }, { v: "fixed", l: "Fixed" }, { v: "false_positive", l: "Dismissed" }].map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Title</span>
+                  <input type="text" value={newFinding.title} onChange={(e) => setNewFinding((f) => ({ ...f, title: e.target.value }))}
+                         className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent"
+                         placeholder="e.g. Weak encryption cipher detected" />
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Category</span>
+                    <select value={newFinding.category} onChange={(e) => setNewFinding((f) => ({ ...f, category: e.target.value }))}
+                            className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent">
+                      <option value="">— Select —</option>
+                      {["Access Control", "Administration", "Authentication", "Certificate", "Custom", "Encryption", "Exposure", "Firmware Compliance", "High Availability", "Licensing", "Logging", "NAT", "Object Hygiene", "Performance", "SSL VPN", "Security Services", "VPN"].map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Affected Object</span>
+                    <input type="text" value={newFinding.object_name} onChange={(e) => setNewFinding((f) => ({ ...f, object_name: e.target.value }))}
+                           className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent"
+                           placeholder="e.g. WAN interface" />
+                  </label>
+                </div>
+                <details className="group">
+                  <summary className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500 cursor-pointer hover:text-ink-300">More Details (optional)</summary>
+                  <div className="space-y-4 mt-3">
+                    <label className="block">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Description</span>
+                      <textarea value={newFinding.description} onChange={(e) => setNewFinding((f) => ({ ...f, description: e.target.value }))} rows={2}
+                                className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent resize-none"
+                                placeholder="Describe the finding..." />
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Business Impact</span>
+                        <input type="text" value={newFinding.business_impact} onChange={(e) => setNewFinding((f) => ({ ...f, business_impact: e.target.value }))}
+                               className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent"
+                               placeholder="Business risk..." />
+                      </label>
+                      <label className="block">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Technical Impact</span>
+                        <input type="text" value={newFinding.technical_impact} onChange={(e) => setNewFinding((f) => ({ ...f, technical_impact: e.target.value }))}
+                               className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent"
+                               placeholder="Technical details..." />
+                      </label>
+                    </div>
+                    <label className="block">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Remediation</span>
+                      <textarea value={newFinding.remediation} onChange={(e) => setNewFinding((f) => ({ ...f, remediation: e.target.value }))} rows={2}
+                                className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent resize-none"
+                                placeholder="How to fix..." />
+                    </label>
+                    <label className="block">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Evidence</span>
+                      <input type="text" value={newFinding.evidence} onChange={(e) => setNewFinding((f) => ({ ...f, evidence: e.target.value }))}
+                             className="mt-1 block w-full bg-base-900 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent"
+                             placeholder="Supporting evidence..." />
+                    </label>
+                  </div>
+                </details>
+              </div>
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-base-500/40">
+                <button onClick={() => { setAddFindingOpen(false); setEditingFinding(null); }}
+                        className="px-4 py-2 rounded-lg border border-base-500 text-ink-400 text-[13px] hover:border-ink-400 transition-all">
+                  Cancel
+                </button>
+                <button onClick={async () => {
+                  if (!newFinding.title || !newFinding.category) return;
+                  setNewFindingBusy(true);
+                  try {
+                    if (editingFinding) {
+                      // Build update payload — only include changed fields
+                      const updates: Record<string, unknown> = {};
+                      for (const k of ["severity", "title", "category", "object_name", "status", "description", "business_impact", "technical_impact", "remediation", "evidence"]) {
+                        const newVal = (newFinding as any)[k];
+                        const oldVal = (editingFinding as any)[k] ?? "";
+                        if (k === "status") { if (newVal !== editingFinding.status) updates[k] = newVal; }
+                        else if (newVal !== oldVal && newVal !== "") updates[k] = newVal;
+                        else if (oldVal === undefined && newVal !== "") updates[k] = newVal;
+                      }
+                      await api.updateManualFinding(editingFinding.id, updates);
+                    } else {
+                      await api.createManualFinding(deviceId, {
+                        severity: newFinding.severity, title: newFinding.title,
+                        category: newFinding.category, object_name: newFinding.object_name,
+                        status: newFinding.status, description: newFinding.description,
+                        business_impact: newFinding.business_impact, technical_impact: newFinding.technical_impact,
+                        remediation: newFinding.remediation, evidence: newFinding.evidence,
+                      });
+                    }
+                    setAddFindingOpen(false);
+                    setEditingFinding(null);
+                    setSuccessMsg(editingFinding ? "Finding updated successfully." : "Manual finding created successfully.");
+                    setTimeout(() => setSuccessMsg(null), 3000);
+                    if (selectedAnalysisId) {
+                      api.listAnalysisFindings(selectedAnalysisId, { limit: "1000" })
+                        .then(setAllAnalysisRows).catch(() => {});
+                    }
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Failed to save finding");
+                  } finally { setNewFindingBusy(false); }
+                }}
+                        disabled={newFindingBusy || !newFinding.title || !newFinding.category}
+                        className="px-5 py-2 rounded-lg bg-accent text-white text-[13px] font-semibold hover:bg-accent/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {newFindingBusy ? "Saving..." : editingFinding ? "Save Changes" : "Add Finding"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Delete confirmation dialog ───────────────────────────── */}
+      {deleteConfirmId && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/50 fade-in" onClick={() => setDeleteConfirmId(null)} />
+          <div className="fixed inset-0 z-40 grid place-items-center pointer-events-none">
+            <div className="pointer-events-auto bg-base-800 border border-base-500 rounded-panel shadow-2xl w-full max-w-sm p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+              <h2 className="font-display text-lg font-semibold text-ink-100 mb-2">Delete Manual Finding</h2>
+              <p className="text-[13px] text-ink-400 mb-6">Are you sure you want to permanently delete this manual finding? This action cannot be undone.</p>
+              <div className="flex items-center justify-end gap-3">
+                <button onClick={() => setDeleteConfirmId(null)}
+                        className="px-4 py-2 rounded-lg border border-base-500 text-ink-400 text-[13px] hover:border-ink-400 transition-all">
+                  Cancel
+                </button>
+                <button onClick={async () => {
+                  if (!deleteConfirmId) return;
+                  setDeleteBusy(true);
+                  try {
+                    await api.deleteManualFinding(deleteConfirmId);
+                    setDeleteConfirmId(null);
+                    setSuccessMsg("Manual finding deleted successfully.");
+                    setTimeout(() => setSuccessMsg(null), 3000);
+                    if (selectedAnalysisId) {
+                      api.listAnalysisFindings(selectedAnalysisId, { limit: "1000" })
+                        .then(setAllAnalysisRows).catch(() => {});
+                    }
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Failed to delete finding");
+                  } finally { setDeleteBusy(false); }
+                }}
+                        disabled={deleteBusy}
+                        className="px-5 py-2 rounded-lg bg-sev-critical text-white text-[13px] font-semibold hover:bg-sev-critical/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {deleteBusy ? "Deleting..." : "Delete"}
+                </button>
               </div>
             </div>
           </div>
@@ -1045,6 +1234,10 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
               ☆ Save
             </button>
           </div>
+          <button onClick={() => { setEditingFinding(null); setNewFinding({ severity: "Medium", title: "", category: "", object_name: "", status: "open", description: "", business_impact: "", technical_impact: "", remediation: "", evidence: "" }); setAddFindingOpen(true); }}
+                  className="px-3 py-2 rounded-lg border border-accent/50 text-accent text-[12px] hover:bg-accent/10 hover:border-accent transition-all font-mono shrink-0">
+            + Add Finding
+          </button>
         </div>
 
         {views.length > 0 && (
@@ -1086,6 +1279,7 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
                 <th className="py-2.5 px-4 hidden md:table-cell">Object</th>
                 <th className="py-2.5 px-4">Status</th>
                 <th className="py-2.5 px-4 hidden lg:table-cell">Last Seen</th>
+                <th className="py-2.5 px-4 w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -1114,6 +1308,20 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
                     }}>{STATUS_LABEL[f.status]}</span>
                   </td>
                   <td className="py-2.5 px-4 font-mono text-[11px] text-ink-500 hidden lg:table-cell">{fmtDate(f.last_seen_at)}</td>
+                  <td className="py-2.5 px-4" onClick={(e) => e.stopPropagation()}>
+                    {f.source === "manual" && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { setEditingFinding(f); setNewFinding({ severity: f.severity, title: f.title, category: f.category, object_name: f.object_name, status: f.status, description: (f as any).description || "", business_impact: "", technical_impact: "", remediation: "", evidence: "" }); setAddFindingOpen(true); }}
+                                className="p-1.5 rounded hover:bg-accent/10 text-ink-400 hover:text-accent transition-all" title="Edit">
+                          ✏️
+                        </button>
+                        <button onClick={() => { setDeleteConfirmId(f.id); }}
+                                className="p-1.5 rounded hover:bg-sev-critical/10 text-ink-400 hover:text-sev-critical transition-all" title="Delete">
+                          🗑️
+                        </button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
