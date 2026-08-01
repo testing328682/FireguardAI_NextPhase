@@ -76,12 +76,14 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
 
   const stats = useMemo(() => {
     const sev: Record<string, number> = {};
-    for (const s of SEVERITIES) sev[s] = 0;
+    const sevTotal: Record<string, number> = {};
+    for (const s of SEVERITIES) { sev[s] = 0; sevTotal[s] = 0; }
     const statusCounts: Record<string, number> = {};
     const activeSet = new Set(ACTIVE_STATUSES);
     const hiddenSet = new Set(orgHidden);
     for (const r of allRows) {
       if (hiddenSet.has(r.severity)) continue;
+      sevTotal[r.severity] = (sevTotal[r.severity] || 0) + 1;
       if (activeSet.has(r.status)) sev[r.severity] = (sev[r.severity] || 0) + 1;
       statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
     }
@@ -89,7 +91,7 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
     const open = (statusCounts.open || 0);
     const inProgress = (statusCounts.in_progress || 0) + (statusCounts.acknowledged || 0);
     const selectedDevice = deviceId ? (devices.find((d) => d.id === deviceId) ?? null) : null;
-    return { sev, resolved, open, inProgress, selectedDevice, total: allRows.length };
+    return { sev, sevTotal, resolved, open, inProgress, selectedDevice, total: allRows.length };
   }, [allRows, deviceId, devices, orgHidden]);
 
   const customerName = (id: string) => customers.find((c) => c.id === id)?.name || id;
@@ -243,16 +245,20 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
         <KpiCard label="Devices" value={scopedDevices.length} color="#4f8cff"
                  sub="configured" icon={<IconServer />} />
         <KpiCard label="Critical" value={stats.sev.Critical || 0} color="#ff4d4d"
-                 sub="open" alert={(stats.sev.Critical || 0) > 0} icon={<IconAlert />}
+                 sub={`${(stats.sevTotal.Critical || 0) - (stats.sev.Critical || 0)}/${stats.sevTotal.Critical || 0} Fixed`}
+                 alert={(stats.sev.Critical || 0) > 0} icon={<IconAlert />}
                  onClick={() => setQuickFilter(q => q?.severity === "Critical" ? null : { severity: "Critical" })} />
          <KpiCard label="High" value={stats.sev.High || 0} color="#ff8a3d"
-                  sub="open" icon={<IconFlag />}
+                  sub={`${(stats.sevTotal.High || 0) - (stats.sev.High || 0)}/${stats.sevTotal.High || 0} Fixed`}
+                  icon={<IconFlag />}
                   onClick={() => setQuickFilter(q => q?.severity === "High" ? null : { severity: "High" })} />
          <KpiCard label="Medium" value={stats.sev.Medium || 0} color="#f5c451"
-                  sub="open" icon={<IconDot />}
+                  sub={`${(stats.sevTotal.Medium || 0) - (stats.sev.Medium || 0)}/${stats.sevTotal.Medium || 0} Fixed`}
+                  icon={<IconDot />}
                   onClick={() => setQuickFilter(q => q?.severity === "Medium" ? null : { severity: "Medium" })} />
          <KpiCard label="Low" value={stats.sev.Low || 0} color="#4a9eff"
-                  sub="open" icon={<IconDot />}
+                  sub={`${(stats.sevTotal.Low || 0) - (stats.sev.Low || 0)}/${stats.sevTotal.Low || 0} Fixed`}
+                  icon={<IconDot />}
                   onClick={() => setQuickFilter(q => q?.severity === "Low" ? null : { severity: "Low" })} />
          <KpiCard label="In Progress" value={stats.inProgress} color="#9ad94a"
                   sub="active triage" icon={<IconClock />}
@@ -533,13 +539,17 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
   // KPI stats for selected analysis (always shows unfiltered totals)
   const analysisStats = useMemo(() => {
     const sev: Record<string, number> = {};
-    for (const s of SEVERITIES) sev[s] = 0;
+    const sevTotal: Record<string, number> = {};
+    for (const s of SEVERITIES) { sev[s] = 0; sevTotal[s] = 0; }
     const statusCounts: Record<string, number> = {};
     const activeSet = new Set(ACTIVE_STATUSES);
     const hiddenForStats = effHidden;
     const hiddenSet = new Set(hiddenForStats);
+    let totalVisible = 0;
     for (const r of allAnalysisRows) {
       if (hiddenSet.has(r.severity)) continue;
+      totalVisible++;
+      sevTotal[r.severity] = (sevTotal[r.severity] || 0) + 1;
       if (activeSet.has(r.status)) sev[r.severity] = (sev[r.severity] || 0) + 1;
       statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
     }
@@ -547,7 +557,7 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     const open = (statusCounts.open || 0);
     const inProgress = (statusCounts.in_progress || 0) + (statusCounts.acknowledged || 0);
     const selAnalysis = selectedAnalysisId ? analyses.find((a) => a.id === selectedAnalysisId) : null;
-    return { sev, resolved, open, inProgress, score: selAnalysis?.score || 0, grade: selAnalysis?.grade || "" };
+    return { sev, sevTotal, resolved, open, inProgress, totalFindings: totalVisible, score: selAnalysis?.score || 0, grade: selAnalysis?.grade || "" };
   }, [allAnalysisRows, selectedAnalysisId, analyses, orgHidden, devHidden]);
 
   async function exportReport(kind: "technical" | "csv" | "xlsx") {
@@ -1007,26 +1017,33 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
         <KpiCard label="Score" value={analysisStats.score} color={gradeColor(analysisStats.grade)}
                  sub={`Grade ${analysisStats.grade || "—"}`} icon={<IconShield />} />
         <KpiCard label="Critical" value={analysisStats.sev.Critical || 0} color="#ff4d4d"
-                 sub="findings" alert={(analysisStats.sev.Critical || 0) > 0} icon={<IconAlert />}
-                  onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Critical") }))} />
-         <KpiCard label="High" value={analysisStats.sev.High || 0} color="#ff8a3d"
-                  sub="findings" icon={<IconFlag />}
-                  onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "High") }))} />
-         <KpiCard label="Medium" value={analysisStats.sev.Medium || 0} color="#f5c451"
-                  sub="findings" icon={<IconDot />}
-                  onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Medium") }))} />
-         <KpiCard label="Low" value={analysisStats.sev.Low || 0} color="#4a9eff"
-                  sub="findings" icon={<IconDot />}
-                  onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Low") }))} />
-         <KpiCard label="Open" value={analysisStats.open} color="#ff8a3d"
-                  sub="unresolved" icon={<IconDot />}
-                  onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "open") }))} />
-         <KpiCard label="In Progress" value={analysisStats.inProgress} color="#4a9eff"
-                  sub="active triage" icon={<IconClock />}
-                  onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "in_progress") }))} />
-         <KpiCard label="Resolved" value={analysisStats.resolved} color="#39d98a"
-                  sub="fixed · dismissed" icon={<IconCheck />}
-                  onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "fixed") }))} />
+                 sub={`${(analysisStats.sevTotal.Critical || 0) - (analysisStats.sev.Critical || 0)}/${analysisStats.sevTotal.Critical || 0} Fixed`}
+                 alert={(analysisStats.sev.Critical || 0) > 0} icon={<IconAlert />}
+                 onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Critical") }))} />
+        <KpiCard label="High" value={analysisStats.sev.High || 0} color="#ff8a3d"
+                 sub={`${(analysisStats.sevTotal.High || 0) - (analysisStats.sev.High || 0)}/${analysisStats.sevTotal.High || 0} Fixed`}
+                 icon={<IconFlag />}
+                 onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "High") }))} />
+        <KpiCard label="Medium" value={analysisStats.sev.Medium || 0} color="#f5c451"
+                 sub={`${(analysisStats.sevTotal.Medium || 0) - (analysisStats.sev.Medium || 0)}/${analysisStats.sevTotal.Medium || 0} Fixed`}
+                 icon={<IconDot />}
+                 onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Medium") }))} />
+        <KpiCard label="Low" value={analysisStats.sev.Low || 0} color="#4a9eff"
+                 sub={`${(analysisStats.sevTotal.Low || 0) - (analysisStats.sev.Low || 0)}/${analysisStats.sevTotal.Low || 0} Fixed`}
+                 icon={<IconDot />}
+                 onClick={() => setFilters((f) => ({ ...f, severity: toggleArray(f.severity, "Low") }))} />
+        <KpiCard label="Open" value={analysisStats.open} color="#ff8a3d"
+                 sub={`${analysisStats.open}/${analysisStats.totalFindings} Open`}
+                 icon={<IconDot />}
+                 onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "open") }))} />
+        <KpiCard label="In Progress" value={analysisStats.inProgress} color="#4a9eff"
+                 sub={`${analysisStats.inProgress}/${analysisStats.totalFindings} In Progress`}
+                 icon={<IconClock />}
+                 onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "in_progress") }))} />
+        <KpiCard label="Resolved" value={analysisStats.resolved} color="#39d98a"
+                 sub={`${analysisStats.resolved}/${analysisStats.totalFindings} Fixed`}
+                 icon={<IconCheck />}
+                 onClick={() => setFilters((f) => ({ ...f, status: toggleArray(f.status, "fixed") }))} />
       </div>
 
       {/* ── Compare modal ──────────────────────────────────────────── */}
