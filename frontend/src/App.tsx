@@ -23,6 +23,7 @@ import { ProductConfig } from "./components/ProductConfig";
 import { Platform } from "./components/Platform";
 import { TsrTester } from "./components/TsrTester";
 import { SecurityAnalytics } from "./components/SecurityAnalytics";
+import { AdvancedDashboard } from "./components/AdvancedDashboard";
 import { ApiFlowConfigPage } from "./components/ApiFlowConfig";
 import { PlanManager } from "./components/PlanManager";
 import { ModalHost } from "./components/Modal";
@@ -38,6 +39,7 @@ interface NavGroup { title: string; items: NavItem[] }
 const NAV_GROUPS: NavGroup[] = [
   { title: "Overview", items: [
     { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
+    { path: "/advanced-dashboard", label: "Advanced Dashboard", icon: "dashboard" },
     { path: "/analytics", label: "Trends", icon: "trends" },
   ] },
   { title: "Assets", items: [
@@ -391,6 +393,7 @@ function Routed({ route, user, customers, onUserChange, onAnalysis }: {
   if (path === "/rules") return <Rules user={user} />;
   if (path === "/compliance") return <Compliance />;
   if (path === "/analytics") return <Trends />;
+  if (path === "/advanced-dashboard") return <AdvancedDashboard />;
   if (path === "/platform") return <Platform />;
   if (path === "/plans") return <PlanManager />;
   if (path === "/builder") return <CelBuilder user={user} />;

@@ -128,6 +128,7 @@ frontend/                 # React 18 + TypeScript + Vite + Tailwind
     ApiTokens.tsx         # Programmatic API token management
     Customers.tsx         # MSP customer management
     Trends.tsx            # Recharts analytics dashboard
+    AdvancedDashboard.tsx # New dashboard (Phase 1: toolbar + shell; widgets pending)
   src/lib/                # api.ts (client), types.ts, router.ts (hash router), ui.ts, theme.ts
 ```
 
@@ -542,3 +543,13 @@ State as of 1 July 2026:
   (pyjwt, cryptography, jinja2, starlette, pytest); tracked in `docs/SOC2.md`.
   SAML signature validation is intentionally not enforced — OIDC is the production
   SSO path.
+- **Manual Findings (Jul–Aug 2026).** Users can now create, edit, and delete
+  manual findings on the Device Findings page. Manual findings (`source="manual"`)
+  have `analysis_id=NULL`, persist across re-analyses, and participate in all
+  dashboards, scores, reports, and analytics identically to parser findings.
+  Backend: `POST /devices/{id}/findings`, `PUT/DELETE /findings/{id}`.
+  Migration `m1n2o3p4q5r6_manual_findings.py` adds `source` column and makes
+  `analysis_id` nullable.
+- **Advanced Dashboard Phase 1 (Aug 2026).** New page at `/#/advanced-dashboard`
+  with reusable toolbar components (CustomerFilter, TimeRangeFilter, LastUpdated,
+  RefreshButton, CustomizeButton). Widgets pending for Phase 2.
