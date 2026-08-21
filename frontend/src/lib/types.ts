@@ -432,6 +432,8 @@ export interface TopFinding {
   rule_id: string;
   title: string;
   count: number;
+  severity?: string;
+  devices?: number;
 }
 
 export interface DeviceHealth {
@@ -488,6 +490,7 @@ export interface DashboardCharts {
   firmware_distribution: FirmwareBucket[];
   total_firmware_devices: number;
   top_findings: TopFinding[];
+  status_distribution: Record<string, SeverityBucket>;
   total_unique_findings: number;
   all_firmware_list: FirmwareBucket[];
   all_findings_list: TopFinding[];

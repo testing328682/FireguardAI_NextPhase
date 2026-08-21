@@ -518,6 +518,7 @@ def dashboard_charts(
     all_findings: bool = False,
     local_today: str | None = None,
     tz_offset: int = 0,
+    hidden_severities: str | None = None,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -528,6 +529,9 @@ def dashboard_charts(
 
     ``local_today`` / ``tz_offset`` define the user's day boundaries
     for the score trend window; without them the server's UTC day is used.
+
+    ``hidden_severities`` is a comma-separated list of severity names that
+    must be excluded from all finding-based calculations (global filter).
     """
     org_id = user.organization_id
     end_date = _parse_local_today(local_today)
@@ -535,6 +539,7 @@ def dashboard_charts(
     since = since_dt - timedelta(days=range_days)
     dids = [d.strip() for d in device_ids.split(",") if d.strip()] if device_ids else None
     device_ids = _device_filter(db, org_id, customer_id, dids)
+    hidden_set = {h.strip() for h in hidden_severities.split(",") if h.strip()} if hidden_severities else set()
 
     # ── Device list ──────────────────────────────────────────────────
     all_devices = list(db.scalars(
@@ -559,11 +564,13 @@ def dashboard_charts(
     ]
 
     # ── 2. Findings by severity ─────────────────────────────────────
+    sev_hidden = Finding.severity.notin_(hidden_set) if hidden_set else True
     sev_rows = db.execute(
         select(Finding.severity, func.count(Finding.id))
         .where(Finding.organization_id == org_id,
                Finding.device_id.in_(device_ids),
-               Finding.status.in_(ACTIVE_FINDING_STATUSES))
+               Finding.status.in_(ACTIVE_FINDING_STATUSES),
+               sev_hidden)
         .group_by(Finding.severity)
     ).all()
     sev_counts: dict[str, int] = {s: 0 for s in _SEVERITIES}
@@ -576,6 +583,34 @@ def dashboard_charts(
             "pct": round(sev_counts.get(sev, 0) / total_findings * 100, 1) if total_findings else 0,
         }
         for sev in _SEVERITIES
+    }
+
+    # ── 2b. Findings by status (Open vs In Progress vs Fixed) ─────────
+    status_rows = db.execute(
+        select(Finding.status, func.count(Finding.id))
+        .where(Finding.organization_id == org_id,
+               Finding.device_id.in_(device_ids),
+               sev_hidden)
+        .group_by(Finding.status)
+    ).all()
+    status_counts: dict[str, int] = {(s.value if hasattr(s, "value") else str(s)): c for s, c in status_rows}
+    status_open = status_counts.get("open", 0)
+    status_progress = status_counts.get("acknowledged", 0) + status_counts.get("in_progress", 0)
+    status_fixed = status_counts.get("fixed", 0) + status_counts.get("false_positive", 0) + status_counts.get("accepted_risk", 0)
+    status_total = status_open + status_progress + status_fixed
+    status_distribution = {
+        "open": {
+            "count": status_open,
+            "pct": round(status_open / status_total * 100, 1) if status_total else 0,
+        },
+        "in_progress": {
+            "count": status_progress,
+            "pct": round(status_progress / status_total * 100, 1) if status_total else 0,
+        },
+        "fixed": {
+            "count": status_fixed,
+            "pct": round(status_fixed / status_total * 100, 1) if status_total else 0,
+        },
     }
 
     # ── 3. Grade distribution ───────────────────────────────────────
@@ -610,27 +645,31 @@ def dashboard_charts(
 
     # ── 5. Most common findings ─────────────────────────────────────
     findings_base = (
-        select(Finding.rule_id, Finding.title, func.count(Finding.id).label("n"))
+        select(Finding.rule_id, Finding.title, Finding.severity,
+               func.count(Finding.id).label("n"),
+               func.count(func.distinct(Finding.device_id)).label("d"))
         .where(Finding.organization_id == org_id,
                Finding.device_id.in_(device_ids),
-               Finding.status.in_(ACTIVE_FINDING_STATUSES))
-        .group_by(Finding.rule_id, Finding.title)
+               Finding.status.in_(ACTIVE_FINDING_STATUSES),
+               sev_hidden)
+        .group_by(Finding.rule_id, Finding.title, Finding.severity)
         .order_by(func.count(Finding.id).desc())
     )
     top_rows = db.execute(findings_base.limit(5)).all()
     top_findings = [
-        {"rule_id": r[0], "title": r[1], "count": r[2]}
+        {"rule_id": r[0], "title": r[1], "severity": r[2], "count": r[3], "devices": r[4]}
         for r in top_rows
     ]
     all_findings_list: list[dict] = []
     if all_findings:
         all_rows = db.execute(findings_base).all()
-        all_findings_list = [{"rule_id": r[0], "title": r[1], "count": r[2]} for r in all_rows]
+        all_findings_list = [{"rule_id": r[0], "title": r[1], "severity": r[2], "count": r[3], "devices": r[4]} for r in all_rows]
     total_unique = db.scalar(
         select(func.count(func.distinct(Finding.rule_id)))
         .where(Finding.organization_id == org_id,
                Finding.device_id.in_(device_ids),
-               Finding.status.in_(ACTIVE_FINDING_STATUSES))
+               Finding.status.in_(ACTIVE_FINDING_STATUSES),
+               sev_hidden)
     ) or 0
 
     return {
@@ -642,6 +681,7 @@ def dashboard_charts(
         "firmware_distribution": firmware_distribution,
         "total_firmware_devices": total_fw_devices,
         "top_findings": top_findings,
+        "status_distribution": status_distribution,
         "total_unique_findings": total_unique,
         "all_firmware_list": all_firmware_list,
         "all_findings_list": all_findings_list,

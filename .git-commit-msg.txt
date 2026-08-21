@@ -1,0 +1,1 @@
+Advanced Dashboard Row 3: full-width layout + fixed findings data (GROUP BY bug)

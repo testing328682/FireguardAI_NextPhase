@@ -7,10 +7,11 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell,
 } from "recharts";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
-import type { Customer, ExecutiveSummary, RiskTrend, Device, OrganizationDetail, CustomerPlanInfo, FreeLicenseInfo, LicenseBundle, TrendPoint } from "../lib/types";
+import type { Customer, ExecutiveSummary, RiskTrend, Device, OrganizationDetail, CustomerPlanInfo, FreeLicenseInfo, LicenseBundle, TrendPoint, DashboardCharts } from "../lib/types";
 import { gradeColor } from "../lib/ui";
 
 // ── Time ranges ───────────────────────────────────────────────────────────
@@ -23,6 +24,15 @@ const RANGES: Range[] = [
   { label: "Last 365 Days", days: 365 },
 ];
 const CUSTOM_RANGE: Range = { label: "Custom Range", days: -1 };
+
+// Severity colors — matches the Security Analytics design language
+const SEV_COLORS: Record<string, string> = {
+  Critical: "#ff4d4d",
+  High: "#ff8a3d",
+  Medium: "#f5c451",
+  Low: "#4a9eff",
+  Info: "#7a879b",
+};
 
 function localToday() { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; }
 function localTzOffset() { return new Date().getTimezoneOffset(); }
@@ -538,6 +548,303 @@ function SecurityGrade({ score, grade }: { score: number; grade: string }) {
   );
 }
 
+// ── Row 3 Widget 1: Findings by Severity (donut + legend) ────────────────
+
+function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) {
+  const dist = charts?.severity_distribution || {};
+  const total = charts?.total_findings || 0;
+  const segments = Object.entries(dist)
+    .filter(([sev, b]) => b.count > 0)
+    .map(([sev, b]) => ({ name: sev, value: b.count, color: SEV_COLORS[sev] || "#7a879b" }));
+  const totalForPct = segments.reduce((s, x) => s + x.value, 0) || 1;
+
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Findings by Severity</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Active findings by severity">ⓘ</span>
+        </div>
+      </div>
+
+      {segments.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🍩</span>
+          <p className="text-ink-500 text-[12px]">No findings available.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center gap-3 min-h-0">
+          {/* Donut — left half */}
+          <div className="relative w-[110px] h-[110px] shrink-0 mx-auto">
+            <PieChart width={110} height={110}>
+              <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                   innerRadius={36} outerRadius={52} paddingAngle={2} strokeWidth={0}
+                   isAnimationActive={false}>
+                {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+            </PieChart>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
+              <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
+            </div>
+          </div>
+
+          {/* Legend — right side */}
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {segments.map((s) => (
+              <div key={s.name} className="flex items-center gap-1.5 text-[10px]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                <span className="text-ink-400 truncate">{s.name}</span>
+                <span className="ml-auto text-ink-300 tabular-nums shrink-0">
+                  {s.value} ({Math.round((s.value / totalForPct) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => navigate("/findings")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all findings →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 3 Widget 2: Open vs Fixed (donut + legend) ───────────────────────
+
+function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
+  const dist = charts?.status_distribution || {};
+  const rows = [
+    { key: "open", label: "Open", color: "#ff4d4d", count: dist.open?.count || 0 },
+    { key: "in_progress", label: "In Progress", color: "#ff8a3d", count: dist.in_progress?.count || 0 },
+    { key: "fixed", label: "Fixed", color: "#39d98a", count: dist.fixed?.count || 0 },
+  ];
+  const segments = rows.filter((r) => r.count > 0);
+  const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Open vs Fixed</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Finding status distribution">ⓘ</span>
+        </div>
+      </div>
+
+      {segments.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🍩</span>
+          <p className="text-ink-500 text-[12px]">No findings available.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center gap-3 min-h-0">
+          <div className="relative w-[110px] h-[110px] shrink-0 mx-auto">
+            <PieChart width={110} height={110}>
+              <Pie data={segments} dataKey="count" nameKey="label" cx="50%" cy="50%"
+                   innerRadius={36} outerRadius={52} paddingAngle={2} strokeWidth={0}
+                   isAnimationActive={false}>
+                {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+            </PieChart>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
+              <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
+            </div>
+          </div>
+
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {rows.map((r) => (
+              <div key={r.key} className="flex items-center gap-1.5 text-[10px]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: r.color }} />
+                <span className="text-ink-400 truncate">{r.label}</span>
+                <span className="ml-auto text-ink-300 tabular-nums shrink-0">
+                  {r.count} ({Math.round((r.count / total) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => navigate("/findings")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View details →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 3 Widget 3: Risk Trend (stacked area) ────────────────────────────
+
+function RiskTrendStackedCard({ trend, hidden }: { trend: RiskTrend | null; hidden: string[] }) {
+  const [wRange, setWRange] = useState(30);
+  const [data, setData] = useState<RiskTrend | null>(null);
+  const [wLoading, setWLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWLoading(true);
+    api.riskTrend(wRange, undefined, undefined, localToday(), localTzOffset())
+      .then((t) => { if (!cancelled) setData(t); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setWLoading(false); });
+    return () => { cancelled = true; };
+  }, [wRange]);
+
+  const t = data || trend;
+  const hiddenSet = new Set(hidden);
+  const visible = ["Critical", "High", "Medium", "Low"].filter((s) => !hiddenSet.has(s));
+
+  const rows = useMemo(() => {
+    if (!t?.trend?.length) return [];
+    return t.trend.map((p) => {
+      const row: Record<string, string | number> = { date: p.date };
+      for (const s of visible) row[s] = (p as any)[s] || 0;
+      return row;
+    });
+  }, [t, visible.join(",")]);
+
+  const maxY = useMemo(() => {
+    let m = 0;
+    for (const r of rows) {
+      const sum = visible.reduce((a, s) => a + (Number(r[s]) || 0), 0);
+      if (sum > m) m = sum;
+    }
+    return m > 0 ? Math.ceil((m * 1.15) / 50) * 50 : 100;
+  }, [rows, visible.join(",")]);
+
+  // Adaptive date ticks
+  const ticks = useMemo(() => {
+    const n = rows.length;
+    if (n <= 2) return rows.map((r) => r.date as string);
+    const indices = new Set<number>([0, n - 1]);
+    const step = Math.max(1, Math.floor(n / 6));
+    for (let i = step; i < n - 1; i += step) indices.add(i);
+    return [...indices].sort((a, b) => a - b).map((i) => rows[i].date as string);
+  }, [rows]);
+
+  const fmtShort = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[13px] font-semibold text-ink-100">Risk Trend</span>
+          <span className="text-ink-600 text-[10px] truncate">Findings by Severity</span>
+          <span className="text-ink-700 text-xs cursor-help shrink-0" title="Historical findings by severity">ⓘ</span>
+        </div>
+        <select value={wRange} onChange={(e) => setWRange(Number(e.target.value))}
+                className="bg-base-800 border border-base-500 rounded-md px-2 py-1 text-[11px] text-ink-300 focus:outline-none focus:border-accent cursor-pointer shrink-0">
+          <option value={7}>Last 7 Days</option>
+          <option value={30}>Last 30 Days</option>
+          <option value={90}>Last 90 Days</option>
+          <option value={365}>Last 365 Days</option>
+        </select>
+      </div>
+
+      {/* Horizontal legend */}
+      <div className="flex items-center gap-3">
+        {visible.map((s) => (
+          <span key={s} className="flex items-center gap-1 text-[9px] text-ink-400">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: SEV_COLORS[s] }} />
+            {s}
+          </span>
+        ))}
+      </div>
+
+      <div className="h-[170px]">
+        {wLoading ? (
+          <div className="h-full flex items-center justify-center"><div className="animate-pulse h-full w-full bg-base-700/30 rounded-lg" /></div>
+        ) : rows.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center gap-1 text-center">
+            <span className="text-2xl opacity-20">📈</span>
+            <p className="text-ink-500 text-[12px]">No historical findings data available.</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={170}>
+            <AreaChart data={rows} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
+              <defs>
+                {visible.map((s) => (
+                  <linearGradient key={s} id={`stack-${s}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={SEV_COLORS[s]} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={SEV_COLORS[s]} stopOpacity={0.05} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#7a879b1a" vertical={false} />
+              <XAxis dataKey="date" ticks={ticks} tickFormatter={fmtShort}
+                     tick={{ fontSize: 9, fill: "#7a879b" }}
+                     axisLine={{ stroke: "#7a879b33" }} tickLine={false} height={18} />
+              <YAxis domain={[0, maxY]} tick={{ fontSize: 9, fill: "#7a879b" }}
+                     axisLine={false} tickLine={false} width={38} />
+              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }}
+                       labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} />
+              {/* Stack order bottom→top: Low, Medium, High, Critical */}
+              {["Low", "Medium", "High", "Critical"].filter((s) => hiddenSet.has(s) === false).map((s) => (
+                <Area key={s} type="monotone" dataKey={s} stackId="1" stroke={SEV_COLORS[s]}
+                      strokeWidth={1.5} fill={`url(#stack-${s})`} isAnimationActive={false} />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Row 3 Widget 4: Top Risks (ranked list) ──────────────────────────────
+
+function TopRisksCard({ charts }: { charts: DashboardCharts | null }) {
+  const risks = charts?.top_findings || [];
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Top Risks</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Most frequent findings across devices">ⓘ</span>
+        </div>
+      </div>
+
+      {risks.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🛡️</span>
+          <p className="text-ink-500 text-[12px]">No risks identified.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center gap-2.5 min-h-0">
+          {risks.slice(0, 5).map((r, i) => {
+            const sev = r.severity || "Info";
+            const color = SEV_COLORS[sev] || "#7a879b";
+            return (
+              <div key={r.rule_id || i} className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: `${color}18` }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-ink-200 truncate leading-tight">{r.title}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[13px] font-semibold tabular-nums" style={{ color }}>{r.devices ?? r.count}</div>
+                  <div className="text-ink-600 text-[8px] leading-tight">Devices</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button onClick={() => navigate("/findings")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all risks →
+      </button>
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────
 
 export function AdvancedDashboard() {
@@ -552,12 +859,18 @@ export function AdvancedDashboard() {
   const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
   const [riskTrend, setRiskTrend] = useState<RiskTrend | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [charts, setCharts] = useState<DashboardCharts | null>(null);
   const [planInfo, setPlanInfo] = useState<CustomerPlanInfo | null>(null);
   const [freeLicense, setFreeLicense] = useState<FreeLicenseInfo | null>(null);
   const [licenseBundles, setLicenseBundles] = useState<LicenseBundle[]>([]);
+  const [hiddenSeverities, setHiddenSeverities] = useState<string[]>([]);
 
   useEffect(() => {
-    api.getOrganization().then(o => { setOrg(o); setIsMsp(!!o.is_msp); }).catch(()=>{});
+    api.getOrganization().then(o => {
+      setOrg(o); setIsMsp(!!o.is_msp);
+      const allowed = new Set(["Medium", "Low", "Info"]);
+      setHiddenSeverities((o.hidden_severities || []).filter((s: string) => allowed.has(s)));
+    }).catch(()=>{});
     api.listCustomers().then(setCustomers).catch(()=>{});
     api.currentPlan().then(setPlanInfo).catch(()=>{});
     api.fetchLicenseBundles().then(r => { setFreeLicense(r.free_license ?? null); setLicenseBundles(r.bundles ?? []); }).catch(()=>{});
@@ -567,16 +880,17 @@ export function AdvancedDashboard() {
     setLoading(true);
     const lt = localToday(), tzo = localTzOffset();
     try {
-      const [s, rt, d] = await Promise.all([
+      const [s, rt, d, c] = await Promise.all([
         api.executiveSummary(range.days, customerId||undefined, undefined, lt, tzo),
         api.riskTrend(range.days, customerId||undefined, undefined, lt, tzo),
         api.listDevices().catch(() => [] as Device[]),
+        api.dashboardCharts(range.days, customerId||undefined, undefined, lt, tzo, hiddenSeverities).catch(() => null),
       ]);
-      setSummary(s); setRiskTrend(rt); setDevices(d);
+      setSummary(s); setRiskTrend(rt); setDevices(d); setCharts(c);
       setLastUpdated(new Date());
     } catch { /* graceful */ }
     setLoading(false);
-  }, [customerId, range]);
+  }, [customerId, range, hiddenSeverities]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -686,6 +1000,22 @@ export function AdvancedDashboard() {
               expiredDevices={summary?.expired_devices ?? 0}
             />
           )}
+        </div>
+      </div>
+
+      {/* Row 3 — Findings by Severity (20%) | Open vs Fixed (20%) | Risk Trend (40%) | Top Risks (20%) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="md:col-span-1">
+          <FindingsBySeverityCard charts={charts} />
+        </div>
+        <div className="md:col-span-1">
+          <OpenVsFixedCard charts={charts} />
+        </div>
+        <div className="md:col-span-2 xl:col-span-2">
+          <RiskTrendStackedCard trend={riskTrend} hidden={hiddenSeverities} />
+        </div>
+        <div className="md:col-span-1">
+          <TopRisksCard charts={charts} />
         </div>
       </div>
     </div>
