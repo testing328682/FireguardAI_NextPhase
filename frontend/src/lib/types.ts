@@ -496,6 +496,21 @@ export interface DashboardCharts {
   all_findings_list: TopFinding[];
 }
 
+export interface Row4Summary {
+  firmware_health: { latest: number; behind: number; total: number };
+  device_health: { healthy: number; warning: number; critical: number; total: number };
+  recent_findings: {
+    id: string; severity: string; title: string; device_name: string; first_seen_at: string | null;
+  }[];
+  recent_fixed: {
+    id: string; severity: string; title: string; device_name: string; resolved_at: string | null;
+  }[];
+  recent_analyses: {
+    id: string; device_name: string; model: string; score: number;
+    score_delta: number | null; created_at: string | null;
+  }[];
+}
+
 export interface RiskTrendPoint {
   date: string;
   Critical: number;

@@ -36,6 +36,7 @@ import type {
   DashboardCharts,
   RiskTrend,
   OperationalSummary,
+  Row4Summary,
   TsrHistoryItem,
   FindingDetail,
   FindingRow,
@@ -502,6 +503,8 @@ export const api = {
     json<OperationalSummary>(`/analytics/operational-summary?range_days=${rangeDays}${customerId ? `&customer_id=${customerId}` : ""}${deviceIds ? `&device_ids=${deviceIds}` : ""}`),
   firmwareCompliance: () =>
     json<import("./types").FirmwareCompliance>("/analytics/firmware-compliance"),
+  row4Summary: (customerId?: string, hiddenSeverities?: string[]) =>
+    json<Row4Summary>(`/analytics/row4${customerId ? `?customer_id=${customerId}` : ""}${hiddenSeverities && hiddenSeverities.length ? `${customerId ? "&" : "?"}hidden_severities=${encodeURIComponent(hiddenSeverities.join(","))}` : ""}`),
 
   // ---- platform operator (superadmin) ----
   platformOverview: () => json<PlatformOverview>("/platform/overview"),

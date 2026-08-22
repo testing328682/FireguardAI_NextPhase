@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
-import type { Customer, ExecutiveSummary, RiskTrend, Device, OrganizationDetail, CustomerPlanInfo, FreeLicenseInfo, LicenseBundle, TrendPoint, DashboardCharts } from "../lib/types";
+import type { Customer, ExecutiveSummary, RiskTrend, Device, OrganizationDetail, CustomerPlanInfo, FreeLicenseInfo, LicenseBundle, TrendPoint, DashboardCharts, Row4Summary } from "../lib/types";
 import { gradeColor } from "../lib/ui";
 
 // ── Time ranges ───────────────────────────────────────────────────────────
@@ -37,6 +37,21 @@ const SEV_COLORS: Record<string, string> = {
 function localToday() { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; }
 function localTzOffset() { return new Date().getTimezoneOffset(); }
 function fmtTime(d:Date){return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});}
+
+// Relative time ("10m ago", "2h ago", "Yesterday", "3d ago")
+function fmtRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const then = new Date(iso);
+  const now = new Date();
+  const mins = Math.max(0, Math.floor((now.getTime() - then.getTime()) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "Yesterday";
+  return `${days}d ago`;
+}
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const ICON = {
@@ -845,6 +860,277 @@ function TopRisksCard({ charts }: { charts: DashboardCharts | null }) {
   );
 }
 
+// ── Row 4 Widget 1: Firmware Health ──────────────────────────────────────
+
+function FirmwareHealthCard({ data }: { data: Row4Summary | null }) {
+  const fh = data?.firmware_health;
+  const latest = fh?.latest || 0;
+  const behind = fh?.behind || 0;
+  const total = fh?.total ?? latest + behind;
+  const segments = [
+    { name: "Latest", value: latest, color: "#39d98a" },
+    { name: "Behind Latest", value: behind, color: "#ff8a3d" },
+  ].filter((s) => s.value > 0);
+  const totalForPct = total || 1;
+
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Firmware Health</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Firmware vs recommended version per generation">ⓘ</span>
+        </div>
+      </div>
+
+      {segments.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🍩</span>
+          <p className="text-ink-500 text-[12px]">No firmware data available.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center gap-3 min-h-0">
+          <div className="relative w-[100px] h-[100px] shrink-0 mx-auto">
+            <PieChart width={100} height={100}>
+              <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                   innerRadius={33} outerRadius={48} paddingAngle={2} strokeWidth={0}
+                   isAnimationActive={false}>
+                {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+            </PieChart>
+          </div>
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {segments.map((s) => (
+              <div key={s.name} className="flex items-center gap-1.5 text-[10px]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                <span className="text-ink-400 truncate">{s.name}</span>
+                <span className="ml-auto text-ink-300 tabular-nums shrink-0">
+                  {s.value} ({Math.round((s.value / totalForPct) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => navigate("/security-analytics")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View firmware report →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 4 Widget 2: Device Health ────────────────────────────────────────
+
+function DeviceHealthCard({ data }: { data: Row4Summary | null }) {
+  const dh = data?.device_health;
+  const healthy = dh?.healthy || 0;
+  const warning = dh?.warning || 0;
+  const critical = dh?.critical || 0;
+  const total = dh?.total ?? healthy + warning + critical;
+  const segments = [
+    { name: "Healthy", value: healthy, color: "#39d98a" },
+    { name: "Warning", value: warning, color: "#ff8a3d" },
+    { name: "Critical", value: critical, color: "#ff4d4d" },
+  ].filter((s) => s.value > 0);
+  const totalForPct = total || 1;
+
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Device Health</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Device health based on security grade">ⓘ</span>
+        </div>
+      </div>
+
+      {segments.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🍩</span>
+          <p className="text-ink-500 text-[12px]">No device health data available.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center gap-3 min-h-0">
+          <div className="relative w-[100px] h-[100px] shrink-0 mx-auto">
+            <PieChart width={100} height={100}>
+              <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                   innerRadius={33} outerRadius={48} paddingAngle={2} strokeWidth={0}
+                   isAnimationActive={false}>
+                {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+            </PieChart>
+          </div>
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {segments.map((s) => (
+              <div key={s.name} className="flex items-center gap-1.5 text-[10px]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                <span className="text-ink-400 truncate">{s.name}</span>
+                <span className="ml-auto text-ink-300 tabular-nums shrink-0">
+                  {s.value} ({Math.round((s.value / totalForPct) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => navigate("/devices")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all devices →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 4 Widget 3: Recently Detected Findings ───────────────────────────
+
+function RecentlyDetectedCard({ data }: { data: Row4Summary | null }) {
+  const items = data?.recent_findings || [];
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Recently Detected Findings</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Most recently detected findings">ⓘ</span>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">🔍</span>
+          <p className="text-ink-500 text-[12px]">No recent findings.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
+          {items.slice(0, 3).map((f) => {
+            const color = SEV_COLORS[f.severity] || "#7a879b";
+            return (
+              <div key={f.id} className="flex items-start gap-2 border-b border-base-500/20 last:border-0 pb-2 last:pb-0">
+                <span className="mt-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0" style={{ background: `${color}18`, color }}>
+                  {f.severity}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-ink-200 leading-tight line-clamp-2">{f.title}</div>
+                  <div className="text-[9px] text-ink-600 mt-0.5 truncate">{f.device_name}</div>
+                </div>
+                <span className="text-[9px] text-ink-600 shrink-0 tabular-nums">{fmtRelative(f.first_seen_at)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button onClick={() => navigate("/findings")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all findings →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 4 Widget 4: Recently Fixed ───────────────────────────────────────
+
+function RecentlyFixedCard({ data }: { data: Row4Summary | null }) {
+  const items = data?.recent_fixed || [];
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Recently Fixed</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Most recently resolved findings">ⓘ</span>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">✅</span>
+          <p className="text-ink-500 text-[12px]">No recently fixed findings.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
+          {items.slice(0, 3).map((f) => {
+            const color = SEV_COLORS[f.severity] || "#7a879b";
+            return (
+              <div key={f.id} className="flex items-start gap-2 border-b border-base-500/20 last:border-0 pb-2 last:pb-0">
+                <span className="mt-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0" style={{ background: `${color}18`, color }}>
+                  {f.severity}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-ink-200 leading-tight line-clamp-2">{f.title}</div>
+                  <div className="text-[9px] text-ink-600 mt-0.5 truncate">{f.device_name}</div>
+                  <span className="inline-block mt-0.5 px-1 py-px rounded text-[8px] font-semibold bg-[#39d98a]15 text-[#39d98a]">Fixed</span>
+                </div>
+                <span className="text-[9px] text-ink-600 shrink-0 tabular-nums">{fmtRelative(f.resolved_at)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button onClick={() => navigate("/findings")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all resolved findings →
+      </button>
+    </div>
+  );
+}
+
+// ── Row 4 Widget 5: Recent Analyses ──────────────────────────────────────
+
+function RecentAnalysesCard({ data }: { data: Row4Summary | null }) {
+  const items = data?.recent_analyses || [];
+  return (
+    <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-ink-100">Recent Analyses</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Recently completed analyses">ⓘ</span>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 text-center">
+          <span className="text-2xl opacity-20">📋</span>
+          <p className="text-ink-500 text-[12px]">No recent analyses.</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center gap-2 min-h-0">
+          {items.slice(0, 3).map((a) => {
+            const delta = a.score_delta;
+            const deltaColor = delta == null || delta === 0 ? "#7a879b" : delta > 0 ? "#39d98a" : "#ff4d4d";
+            const arrow = delta == null || delta === 0 ? "→" : delta > 0 ? "↑" : "↓";
+            return (
+              <div key={a.id} className="flex items-start gap-2 border-b border-base-500/20 last:border-0 pb-2 last:pb-0">
+                <span className="mt-0.5 w-5 h-5 rounded-md flex items-center justify-center shrink-0 bg-accent/10">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" strokeWidth="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="#4f8cff"/><circle cx="6" cy="18" r="1" fill="#4f8cff"/></svg>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-ink-200 leading-tight truncate">{a.device_name}</div>
+                  <div className="text-[9px] text-ink-600 truncate">{a.model || "Firewall"}</div>
+                  <span className="inline-block mt-0.5 px-1 py-px rounded text-[8px] font-semibold bg-[#39d98a]15 text-[#39d98a]">Completed</span>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[9px] text-ink-600 tabular-nums">{fmtRelative(a.created_at)}</div>
+                  <div className="text-[10px] font-semibold tabular-nums mt-0.5" style={{ color: deltaColor }}>
+                    Score {delta != null && delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} ${arrow}` : `${a.score} ${arrow}`}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button onClick={() => navigate("/devices")}
+              className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
+        View all analyses →
+      </button>
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────
 
 export function AdvancedDashboard() {
@@ -860,6 +1146,7 @@ export function AdvancedDashboard() {
   const [riskTrend, setRiskTrend] = useState<RiskTrend | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [charts, setCharts] = useState<DashboardCharts | null>(null);
+  const [row4, setRow4] = useState<Row4Summary | null>(null);
   const [planInfo, setPlanInfo] = useState<CustomerPlanInfo | null>(null);
   const [freeLicense, setFreeLicense] = useState<FreeLicenseInfo | null>(null);
   const [licenseBundles, setLicenseBundles] = useState<LicenseBundle[]>([]);
@@ -880,13 +1167,14 @@ export function AdvancedDashboard() {
     setLoading(true);
     const lt = localToday(), tzo = localTzOffset();
     try {
-      const [s, rt, d, c] = await Promise.all([
+      const [s, rt, d, c, r4] = await Promise.all([
         api.executiveSummary(range.days, customerId||undefined, undefined, lt, tzo),
         api.riskTrend(range.days, customerId||undefined, undefined, lt, tzo),
         api.listDevices().catch(() => [] as Device[]),
         api.dashboardCharts(range.days, customerId||undefined, undefined, lt, tzo, hiddenSeverities).catch(() => null),
+        api.row4Summary(customerId||undefined, hiddenSeverities).catch(() => null),
       ]);
-      setSummary(s); setRiskTrend(rt); setDevices(d); setCharts(c);
+      setSummary(s); setRiskTrend(rt); setDevices(d); setCharts(c); setRow4(r4);
       setLastUpdated(new Date());
     } catch { /* graceful */ }
     setLoading(false);
@@ -1018,6 +1306,25 @@ export function AdvancedDashboard() {
           <TopRisksCard charts={charts} />
         </div>
       </div>
+
+      {/* Row 4 — Firmware Health | Device Health | Recently Detected | Recently Fixed | Recent Analyses (full width) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[19fr_19fr_19fr_19fr_24fr] gap-4">
+         <div className="md:col-span-1">
+           <FirmwareHealthCard data={row4} />
+         </div>
+         <div className="md:col-span-1">
+           <DeviceHealthCard data={row4} />
+         </div>
+         <div className="md:col-span-1">
+           <RecentlyDetectedCard data={row4} />
+         </div>
+         <div className="md:col-span-1">
+           <RecentlyFixedCard data={row4} />
+         </div>
+         <div className="md:col-span-2 xl:col-span-1">
+           <RecentAnalysesCard data={row4} />
+         </div>
+       </div>
     </div>
   );
 }

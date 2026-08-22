@@ -940,3 +940,161 @@ def firmware_compliance(
         })
 
     return {"generations": result}
+
+
+# ── Row 4 Widgets (Firmware Health, Device Health, Recent Findings/Fixed, Recent Analyses) ──
+
+@router.get("/analytics/row4")
+def row4_summary(
+    customer_id: str | None = None,
+    hidden_severities: str | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Aggregate the five Row 4 widgets in a single tenant-scoped call.
+
+    All sections respect the optional ``customer_id`` filter and exclude
+    decommissioned devices.  Firmware health reuses the generation /
+    recommended-firmware configuration; device health derives from each
+    device's latest grade; recent findings use ``first_seen_at``; recent
+    fixes use ``resolved_at``; recent analyses include the score delta
+    against the device's previous completed analysis.
+    """
+    org_id = user.organization_id
+    device_ids = _device_filter(db, org_id, customer_id)
+    hidden_set = {h.strip() for h in hidden_severities.split(",") if h.strip()} if hidden_severities else set()
+    devices = list(db.scalars(select(Device).where(Device.id.in_(device_ids))))
+    dmap = {d.id: d for d in devices}
+
+    # ── 1. Firmware health (Latest vs Behind Latest) ────────────────────
+    by_model: dict[str, list[Device]] = {}
+    for d in devices:
+        m = (d.model or "").strip()
+        if m:
+            by_model.setdefault(m, []).append(d)
+    gens = db.scalars(select(DeviceGeneration).order_by(DeviceGeneration.sort_order)).all()
+    fw_latest = 0
+    fw_behind = 0
+    for g in gens:
+        rec_fw = g.firmware[0].version.strip() if g.firmware else ""
+        gen_devices: list[Device] = []
+        for gd in g.devices:
+            gen_devices.extend(by_model.get((gd.model or "").strip(), []))
+        for d in gen_devices:
+            if (d.firmware or "").strip() == rec_fw:
+                fw_latest += 1
+            else:
+                fw_behind += 1
+    fw_total = fw_latest + fw_behind
+
+    # ── 2. Device health (Healthy A/B, Warning C/D, Critical F) ─────────
+    healthy = warning = critical = 0
+    for d in devices:
+        g = (d.latest_grade or "F").upper()
+        if g in ("A", "B"):
+            healthy += 1
+        elif g in ("C", "D"):
+            warning += 1
+        else:
+            critical += 1
+    dh_total = healthy + warning + critical
+
+    # ── 3. Recently detected findings ────────────────────────────────────
+    f_hidden = Finding.severity.notin_(hidden_set) if hidden_set else True
+    recent_rows = db.execute(
+        select(Finding)
+        .where(Finding.organization_id == org_id,
+               Finding.device_id.in_(device_ids),
+               Finding.status.in_(ACTIVE_FINDING_STATUSES),
+               f_hidden)
+        .order_by(Finding.first_seen_at.desc())
+        .limit(4)
+    ).scalars().all()
+    recent_findings = [
+        {
+            "id": f.id,
+            "severity": f.severity,
+            "title": f.title,
+            "device_name": (dmap.get(f.device_id).friendly_name
+                            or dmap.get(f.device_id).model or "Unknown") if f.device_id in dmap else "Unknown",
+            "first_seen_at": f.first_seen_at.isoformat() if f.first_seen_at else None,
+        }
+        for f in recent_rows
+    ]
+
+    # ── 4. Recently fixed findings ──────────────────────────────────────
+    fixed_rows = db.execute(
+        select(Finding)
+        .where(Finding.organization_id == org_id,
+               Finding.device_id.in_(device_ids),
+               Finding.resolved_at.is_not(None),
+               f_hidden)
+        .order_by(Finding.resolved_at.desc())
+        .limit(4)
+    ).scalars().all()
+    recent_fixed = [
+        {
+            "id": f.id,
+            "severity": f.severity,
+            "title": f.title,
+            "device_name": (dmap.get(f.device_id).friendly_name
+                            or dmap.get(f.device_id).model or "Unknown") if f.device_id in dmap else "Unknown",
+            "resolved_at": f.resolved_at.isoformat() if f.resolved_at else None,
+        }
+        for f in fixed_rows
+    ]
+
+    # ── 5. Recent analyses with score delta ─────────────────────────────
+    analyses = list(db.scalars(
+        select(Analysis)
+        .where(Analysis.organization_id == org_id,
+               Analysis.device_id.in_(device_ids),
+               Analysis.status == AnalysisStatus.complete)
+        .order_by(Analysis.created_at.desc())
+        .limit(8)
+    ))
+    # previous completed analysis per device (for delta)
+    prev_scores: dict[str, float] = {}
+    all_done = list(db.scalars(
+        select(Analysis)
+        .where(Analysis.organization_id == org_id,
+               Analysis.device_id.in_(device_ids),
+               Analysis.status == AnalysisStatus.complete)
+        .order_by(Analysis.created_at.desc())
+    ))
+    seen_devices: set[str] = set()
+    for a in all_done:
+        if a.device_id not in seen_devices:
+            seen_devices.add(a.device_id)
+        else:
+            prev_scores.setdefault(a.device_id, a.score)
+    recent_analyses = []
+    for a in analyses[:5]:
+        prev = prev_scores.get(a.device_id)
+        delta = round(a.score - prev, 1) if prev is not None else None
+        dev = dmap.get(a.device_id)
+        recent_analyses.append({
+            "id": a.id,
+            "device_name": (dev.friendly_name or dev.model or "Unknown") if dev else "Unknown",
+            "model": dev.model or "" if dev else "",
+            "score": a.score,
+            "score_delta": delta,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+
+    return {
+        "firmware_health": {
+            "latest": fw_latest,
+            "behind": fw_behind,
+            "total": fw_total,
+        },
+        "device_health": {
+            "healthy": healthy,
+            "warning": warning,
+            "critical": critical,
+            "total": dh_total,
+        },
+        "recent_findings": recent_findings,
+        "recent_fixed": recent_fixed,
+        "recent_analyses": recent_analyses,
+    }
