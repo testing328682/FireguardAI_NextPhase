@@ -71,13 +71,16 @@ const PROFILE_LINKS = [
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
+  "/dashboard": "Dashboard", "/advanced-dashboard": "Advanced Security Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
   "/customers": "Customers",
   "/customers/": "Customer", "/findings": "Findings", "/security-analytics": "Security Analytics", "/rules": "Detection Rules",
   "/compliance": "Compliance", "/integrations": "Integrations", "/platform": "Platform Operations",
   "/plans": "Plan Management", "/tsr-tester": "TSR Analysis Tester",
   "/api-config": "API TSR Parser Config",
   "/settings/profile": "Settings", "/settings/organization": "Settings", "/settings/api-tokens": "Settings",
+};
+const SUBTITLES: Record<string, string> = {
+  "/advanced-dashboard": "Comprehensive security posture and risk analytics",
 };
 
 export default function App() {
@@ -199,6 +202,7 @@ export default function App() {
   const title = TITLES[route.split("?")[0]] || (route.startsWith("/findings") ? "Finding"
     : route.startsWith("/rules") ? "Rule"
     : route.startsWith("/devices/") ? "Device" : "FirewallGuard AI");
+  const subtitle = SUBTITLES[route.split("?")[0]];
 
   const sidebar = (
     <SidebarNav groups={groups} route={route} onNavigate={go} />
@@ -223,6 +227,7 @@ export default function App() {
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar
             title={title}
+            subtitle={subtitle}
             onMenu={() => setNavOpen(true)}
             theme={theme}
             onToggleTheme={() => setTheme(toggleTheme())}
@@ -289,8 +294,8 @@ function SidebarNav({ groups, route, onNavigate }:
   );
 }
 
-function TopBar({ title, onMenu, theme, onToggleTheme, right }:
-  { title: string; onMenu: (() => void) | null; theme: string;
+function TopBar({ title, subtitle, onMenu, theme, onToggleTheme, right }:
+  { title: string; subtitle?: string; onMenu: (() => void) | null; theme: string;
     onToggleTheme: () => void; right: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-20 h-16 border-b border-base-500 bg-base-900/80 backdrop-blur flex items-center gap-3 px-5 sm:px-6">
@@ -300,7 +305,10 @@ function TopBar({ title, onMenu, theme, onToggleTheme, right }:
           <Icon.menu />
         </button>
       )}
-      <h1 className="font-display font-semibold text-ink-100 text-[17px] flex-1 truncate">{title}</h1>
+      <div className="flex-1 min-w-0">
+        <h1 className="font-display font-semibold text-ink-100 text-[17px] truncate">{title}</h1>
+        {subtitle && <p className="text-ink-500 text-[12px] mt-0.5 truncate">{subtitle}</p>}
+      </div>
       <button onClick={onToggleTheme} aria-label="Toggle theme"
               title={theme === "dark" ? "Switch to light" : "Switch to dark"}
               className="w-9 h-9 grid place-items-center rounded-panel border border-base-500 text-ink-300 hover:text-accent hover:border-accent transition-colors">

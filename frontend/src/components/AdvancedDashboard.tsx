@@ -536,12 +536,12 @@ function SecurityGrade({ score, grade }: { score: number; grade: string }) {
             </linearGradient>
           </defs>
 
-          {/* Inactive grey arc — from score point to 100% */}
-          <path d={`M ${scorePt.x} ${scorePt.y} A ${R} ${R} 0 ${largeInactive} 1 ${endPt.x} ${endPt.y}`}
-                fill="none" stroke="#2d3748" strokeWidth="12" strokeLinecap="round" />
-          {/* Active gradient arc — from 0 to the score point */}
-          <path d={`M ${startPt.x} ${startPt.y} A ${R} ${R} 0 ${largeActive} 1 ${scorePt.x} ${scorePt.y}`}
-                fill="none" stroke="url(#gaugeArcGrad)" strokeWidth="12" strokeLinecap="round" />
+            {/* Inactive grey arc — from score point to 100% */}
+            <path d={`M ${scorePt.x} ${scorePt.y} A ${R} ${R} 0 ${largeInactive} 1 ${endPt.x} ${endPt.y}`}
+                  fill="none" stroke="#2d3748" strokeWidth="16" strokeLinecap="round" />
+            {/* Active gradient arc — from 0 to the score point */}
+            <path d={`M ${startPt.x} ${startPt.y} A ${R} ${R} 0 ${largeActive} 1 ${scorePt.x} ${scorePt.y}`}
+                  fill="none" stroke="url(#gaugeArcGrad)" strokeWidth="16" strokeLinecap="round" />
 
           {/* Inner text — centered in the hollow */}
           <text x="100" y="98" textAnchor="middle" fill={gColor} fontSize="44" fontWeight="700" fontFamily="ui-monospace, monospace">
@@ -1200,12 +1200,6 @@ export function AdvancedDashboard() {
 
   return (
     <div className="max-w-[1440px] fade-in space-y-5 pb-8">
-      {/* ── Title ──────────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="font-display text-[22px] font-semibold text-ink-100 tracking-tight">Advanced Security Dashboard</h1>
-        <p className="text-ink-500 text-[12px] mt-0.5">Comprehensive security posture and risk analytics</p>
-      </div>
-
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
