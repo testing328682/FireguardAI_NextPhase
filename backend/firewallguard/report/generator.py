@@ -16,6 +16,7 @@ import ipaddress
 import json
 import logging
 import socket
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -250,8 +251,6 @@ def _make_header_footer(branding: Optional[Dict[str, Any]] = None,
         canvas_obj.line(0.75 * inch, letter[1] - 0.72 * inch, letter[0] - 0.75 * inch, letter[1] - 0.72 * inch)
         canvas_obj.setFont("Helvetica", 8)
         canvas_obj.setFillColor(_PALETTE["muted"])
-        canvas_obj.drawString(0.75 * inch, 0.5 * inch,
-                              "Confidential - generated from customer-supplied TSR")
         canvas_obj.drawRightString(letter[0] - 0.75 * inch, 0.5 * inch, f"Page {doc.page}")
         canvas_obj.restoreState()
 
@@ -508,7 +507,7 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     dev = analysis["device"]
     score = analysis.get("score", {})
     findings = analysis.get("findings", [])
-    generated = analysis.get("generated_at", "")[:19].replace("T", " ")
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     # =====================================================================
     # 1. REPORT HEADER / COVER
