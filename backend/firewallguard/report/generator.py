@@ -515,13 +515,15 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     # =====================================================================
     _logo = _load_logo(branding, max_width=0.35 * inch, max_height=0.35 * inch)
     story.append(Paragraph("Device Security Assessment Report", st["title"]))
+    story.append(Spacer(1, 6))
     story.append(Paragraph(
         f"{dev.get('model','SonicWall device')} &nbsp;|&nbsp; "
         f"Firmware {dev.get('firmware','-')} &nbsp;|&nbsp; "
         f"Serial {dev.get('serial','-')}",
         st["subtitle"]))
+    story.append(Spacer(1, 8))
     story.append(Paragraph(f"Generated {generated} UTC", st["small"]))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 14))
 
     # =====================================================================
     # 2. EXECUTIVE SUMMARY
