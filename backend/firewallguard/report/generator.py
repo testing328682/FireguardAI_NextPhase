@@ -82,7 +82,8 @@ def _is_safe_url(url: str) -> bool:
         return False
 
 
-def _load_logo(branding: Optional[Dict[str, Any]]) -> Optional[Any]:
+def _load_logo(branding: Optional[Dict[str, Any]],
+               max_width: float = _max_logo_w, max_height: float = _max_logo_h) -> Optional[Any]:
     """Download a white-label logo and return a ReportLab flowable, or None."""
     if not branding:
         return None
@@ -108,8 +109,8 @@ def _load_logo(branding: Optional[Dict[str, Any]]) -> Optional[Any]:
             if drawing is None or drawing.width == 0 or drawing.height == 0:
                 _log.warning("svglib failed to parse SVG logo")
                 return None
-            sx = _max_logo_w / drawing.width
-            sy = _max_logo_h / drawing.height
+            sx = max_width / drawing.width
+            sy = max_height / drawing.height
             scale = min(sx, sy)
             drawing.scale(scale, scale)
             drawing.width *= scale
@@ -120,7 +121,7 @@ def _load_logo(branding: Optional[Dict[str, Any]]) -> Optional[Any]:
             img = PILImage.open(io.BytesIO(content)).convert("RGBA")
             w, h = img.size
             px_w, px_h = w * inch / 72, h * inch / 72
-            scale = min(_max_logo_w / px_w, _max_logo_h / px_h)
+            scale = min(max_width / px_w, max_height / px_h, 1.0)
             t_w = px_w * scale
             t_h = px_h * scale
             buf = io.BytesIO()
@@ -490,9 +491,31 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     # =====================================================================
     # 1. REPORT HEADER / COVER
     # =====================================================================
-    logo = _load_logo(branding)
+    _logo_w = 1.4 * inch
+    _logo_h = 0.7 * inch
+    logo = _load_logo(branding, max_width=_logo_w, max_height=_logo_h)
+    _company_name = (branding or {}).get("company_name") or "FirewallGuard AI"
     if logo is not None:
-        story.append(logo)
+        _name_color = _PALETTE["brand"]
+        if branding and branding.get("primary_color"):
+            try:
+                _name_color = colors.HexColor(branding["primary_color"])
+            except (ValueError, TypeError):
+                pass
+        _name_style = ParagraphStyle(
+            "fg_brand_name", fontName="Helvetica-Bold", fontSize=10,
+            textColor=_name_color, leading=12)
+        _logo_col = 1.55 * inch
+        _table = Table([[logo, Paragraph(_company_name, _name_style)]],
+                       colWidths=[_logo_col, None])
+        _table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(_table)
         story.append(Spacer(1, 6))
     story.append(Paragraph("Device Security Assessment Report", st["title"]))
     story.append(Paragraph(
