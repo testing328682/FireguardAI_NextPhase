@@ -33,12 +33,14 @@ redis==5.2.1
 
 # Reporting
 reportlab==4.2.5
+svglib==2.2.0
+lxml==5.3.0
 openpyxl==3.1.5               # Excel (.xlsx) findings export
 Jinja2==3.1.4
+httpx==0.28.1                 # Remote image fetching for PDF branding
 
 # Cloud storage (production)
 boto3==1.35.92
 
 # Testing
 pytest==8.3.4
-httpx==0.28.1

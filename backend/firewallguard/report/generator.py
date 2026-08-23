@@ -12,9 +12,14 @@ from __future__ import annotations
 
 import csv
 import io
+import ipaddress
 import json
+import logging
+import socket
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import httpx
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -22,8 +27,113 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
-    HRFlowable, KeepTogether,
+    HRFlowable, KeepTogether, Image as RlImage,
 )
+from reportlab.lib.utils import ImageReader
+
+_log = logging.getLogger("firewallguard.report")
+
+_max_logo_w = 1.8 * inch
+_max_logo_h = 0.9 * inch
+_logo_timeout = 10.0
+_logo_max_bytes = 2 * 1024 * 1024
+
+_PRIVATE_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_ip_private(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return any(ip in n for n in _PRIVATE_NETS)
+    except ValueError:
+        return True
+
+
+def _is_safe_url(url: str) -> bool:
+    """Validate URL for SSRF protection: HTTPS only, no private/loopback IPs."""
+    try:
+        p = urlparse(url)
+        if p.scheme != "https":
+            _log.warning("Logo URL rejected: not HTTPS")
+            return False
+        if not p.hostname:
+            return False
+        try:
+            infos = socket.getaddrinfo(p.hostname, None)
+        except socket.gaierror:
+            _log.warning("Logo URL rejected: DNS resolution failed")
+            return False
+        for f, _, _, _, sa in infos:
+            if _is_ip_private(sa[0]):
+                _log.warning("Logo URL rejected: resolves to private IP")
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _load_logo(branding: Optional[Dict[str, Any]]) -> Optional[Any]:
+    """Download a white-label logo and return a ReportLab flowable, or None."""
+    if not branding:
+        return None
+    url = (branding.get("logo_url") or "").strip()
+    if not url:
+        return None
+    if not _is_safe_url(url):
+        return None
+    try:
+        resp = httpx.get(url, timeout=_logo_timeout, follow_redirects=True)
+        resp.raise_for_status()
+        if len(resp.content) > _logo_max_bytes:
+            _log.warning("Logo too large, skipping")
+            return None
+        ct = resp.headers.get("content-type", "").lower()
+        content = resp.content
+        is_svg = ("svg" in ct or
+                  content.lstrip(b"<\x20").startswith(b"svg") or
+                  b"<svg" in content[:2000])
+        if is_svg:
+            from svglib.svglib import svg2rlg
+            drawing = svg2rlg(io.BytesIO(content))
+            if drawing is None or drawing.width == 0 or drawing.height == 0:
+                _log.warning("svglib failed to parse SVG logo")
+                return None
+            sx = _max_logo_w / drawing.width
+            sy = _max_logo_h / drawing.height
+            scale = min(sx, sy)
+            drawing.scale(scale, scale)
+            drawing.width *= scale
+            drawing.height *= scale
+            return drawing
+        else:
+            from PIL import Image as PILImage
+            img = PILImage.open(io.BytesIO(content)).convert("RGBA")
+            w, h = img.size
+            px_w, px_h = w * inch / 72, h * inch / 72
+            scale = min(_max_logo_w / px_w, _max_logo_h / px_h)
+            t_w = px_w * scale
+            t_h = px_h * scale
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            return RlImage(ImageReader(buf), width=t_w, height=t_h)
+    except ImportError as e:
+        _log.warning(f"SVG support unavailable: {e}")
+        return None
+    except Exception as e:
+        _log.warning(f"Logo load failed for {url}: {e}")
+        return None
+
 
 _PALETTE = {
     "ink": colors.HexColor("#0f172a"),
@@ -380,6 +490,10 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     # =====================================================================
     # 1. REPORT HEADER / COVER
     # =====================================================================
+    logo = _load_logo(branding)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 6))
     story.append(Paragraph("Device Security Assessment Report", st["title"]))
     story.append(Paragraph(
         f"{dev.get('model','SonicWall device')} &nbsp;|&nbsp; "
