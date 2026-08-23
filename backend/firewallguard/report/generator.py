@@ -27,9 +27,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
-    HRFlowable, KeepTogether, Image as RlImage,
+    HRFlowable, KeepTogether,
 )
-from reportlab.lib.utils import ImageReader
 
 _log = logging.getLogger("firewallguard.report")
 
@@ -83,8 +82,15 @@ def _is_safe_url(url: str) -> bool:
 
 
 def _load_logo(branding: Optional[Dict[str, Any]],
-               max_width: float = _max_logo_w, max_height: float = _max_logo_h) -> Optional[Any]:
-    """Download a white-label logo and return a ReportLab flowable, or None."""
+               max_width: float = _max_logo_w, max_height: float = _max_logo_h) -> Optional[Dict[str, Any]]:
+    """Download a white-label logo and return a canvas-ready descriptor, or None.
+
+    Returns a dict with:
+      - 'type': 'svg' or 'raster'
+      - 'drawing' (svg): a scaled svglib Drawing with drawOn()
+      - 'buf' (raster): a BytesIO of PNG bytes
+      - 'width', 'height': rendered dimensions in points
+    """
     if not branding:
         return None
     url = (branding.get("logo_url") or "").strip()
@@ -115,7 +121,7 @@ def _load_logo(branding: Optional[Dict[str, Any]],
             drawing.scale(scale, scale)
             drawing.width *= scale
             drawing.height *= scale
-            return drawing
+            return {"type": "svg", "drawing": drawing, "width": drawing.width, "height": drawing.height}
         else:
             from PIL import Image as PILImage
             img = PILImage.open(io.BytesIO(content)).convert("RGBA")
@@ -127,7 +133,7 @@ def _load_logo(branding: Optional[Dict[str, Any]],
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             buf.seek(0)
-            return RlImage(ImageReader(buf), width=t_w, height=t_h)
+            return {"type": "raster", "buf": buf, "width": t_w, "height": t_h}
     except ImportError as e:
         _log.warning(f"SVG support unavailable: {e}")
         return None
@@ -202,10 +208,13 @@ def _styles() -> Dict[str, ParagraphStyle]:
     return s
 
 
-def _make_header_footer(branding: Optional[Dict[str, Any]] = None):
+def _make_header_footer(branding: Optional[Dict[str, Any]] = None,
+                        logo: Optional[Dict[str, Any]] = None):
     """Return a header/footer painter, optionally white-labelled for an MSP.
 
     ``branding`` may carry ``company_name``, ``primary_color`` and ``contact``.
+    ``logo`` is a pre-loaded logo descriptor (dict from ``_load_logo``)
+    drawn to the left of the company name in the header.
     When absent, the report carries default FirewallGuard AI branding.
     """
     b = branding or {}
@@ -218,14 +227,27 @@ def _make_header_footer(branding: Optional[Dict[str, Any]] = None):
 
     def _header_footer(canvas_obj, doc):
         canvas_obj.saveState()
-        canvas_obj.setFont("Helvetica-Bold", 9)
+        x = 0.75 * inch
+        y_text = letter[1] - 0.55 * inch
+        if logo is not None:
+            if logo.get("type") == "svg" and logo.get("drawing") is not None:
+                logo["drawing"].drawOn(canvas_obj, x, y_text - 0.07 * inch)
+                x += logo["width"] + 4
+            elif logo.get("type") == "raster" and logo.get("buf") is not None:
+                try:
+                    canvas_obj.drawImage(logo["buf"], x, y_text - 0.07 * inch,
+                                         width=logo["width"], height=logo["height"], mask="auto")
+                    x += logo["width"] + 4
+                except Exception:
+                    pass
+        canvas_obj.setFont("Helvetica-Bold", 11)
         canvas_obj.setFillColor(brand_color)
-        canvas_obj.drawString(0.75 * inch, letter[1] - 0.55 * inch, name)
+        canvas_obj.drawString(x, y_text, name)
         canvas_obj.setFont("Helvetica", 8)
         canvas_obj.setFillColor(_PALETTE["muted"])
-        canvas_obj.drawRightString(letter[0] - 0.75 * inch, letter[1] - 0.55 * inch, tagline)
+        canvas_obj.drawRightString(letter[0] - 0.75 * inch, y_text, tagline)
         canvas_obj.setStrokeColor(_PALETTE["line"])
-        canvas_obj.line(0.75 * inch, letter[1] - 0.62 * inch, letter[0] - 0.75 * inch, letter[1] - 0.62 * inch)
+        canvas_obj.line(0.75 * inch, letter[1] - 0.72 * inch, letter[0] - 0.75 * inch, letter[1] - 0.72 * inch)
         canvas_obj.setFont("Helvetica", 8)
         canvas_obj.setFillColor(_PALETTE["muted"])
         canvas_obj.drawString(0.75 * inch, 0.5 * inch,
@@ -491,32 +513,7 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     # =====================================================================
     # 1. REPORT HEADER / COVER
     # =====================================================================
-    _logo_w = 1.4 * inch
-    _logo_h = 0.7 * inch
-    logo = _load_logo(branding, max_width=_logo_w, max_height=_logo_h)
-    _company_name = (branding or {}).get("company_name") or "FirewallGuard AI"
-    if logo is not None:
-        _name_color = _PALETTE["brand"]
-        if branding and branding.get("primary_color"):
-            try:
-                _name_color = colors.HexColor(branding["primary_color"])
-            except (ValueError, TypeError):
-                pass
-        _name_style = ParagraphStyle(
-            "fg_brand_name", fontName="Helvetica-Bold", fontSize=10,
-            textColor=_name_color, leading=12)
-        _logo_col = 1.55 * inch
-        _table = Table([[logo, Paragraph(_company_name, _name_style)]],
-                       colWidths=[_logo_col, None])
-        _table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.append(_table)
-        story.append(Spacer(1, 6))
+    _logo = _load_logo(branding, max_width=0.35 * inch, max_height=0.35 * inch)
     story.append(Paragraph("Device Security Assessment Report", st["title"]))
     story.append(Paragraph(
         f"{dev.get('model','SonicWall device')} &nbsp;|&nbsp; "
@@ -644,7 +641,7 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
                     f"<i>Contributing rules: {', '.join(ap['contributing_rules'])}</i>", st["small"]))
             story.append(Spacer(1, 8))
 
-    _hf = _make_header_footer(branding)
+    _hf = _make_header_footer(branding, logo=_logo)
     doc.build(story, onFirstPage=_hf, onLaterPages=_hf)
     return path
 
