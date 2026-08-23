@@ -388,8 +388,8 @@ def _findings_summary_table(findings: List[Dict[str, Any]], st, linked: bool = F
             Paragraph(_esc(obj_label[:60]), st["cell"]),
             Paragraph(f.get("exploitability", "-"), st["cell"]),
         ])
-    t = Table(data, colWidths=[0.3 * inch, 0.7 * inch, 1.15 * inch, 2.2 * inch,
-                               1.75 * inch, 0.65 * inch], repeatRows=1)
+    t = Table(data, colWidths=[0.3 * inch, 0.6 * inch, 1.0 * inch, 1.9 * inch,
+                               1.55 * inch, 0.65 * inch], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _PALETTE["ink"]),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
