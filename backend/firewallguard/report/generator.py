@@ -514,15 +514,18 @@ def build_technical_pdf(analysis: Dict[str, Any], path: str,
     # 1. REPORT HEADER / COVER
     # =====================================================================
     _logo = _load_logo(branding, max_width=0.35 * inch, max_height=0.35 * inch)
-    story.append(Paragraph("Device Security Assessment Report", st["title"]))
+    _h_title = ParagraphStyle("fg_h_title", parent=st["title"], spaceAfter=0)
+    _h_sub = ParagraphStyle("fg_h_sub", parent=st["subtitle"], spaceAfter=0)
+    _h_small = ParagraphStyle("fg_h_small", parent=st["small"], spaceAfter=0)
+    story.append(Paragraph("Device Security Assessment Report", _h_title))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
         f"{dev.get('model','SonicWall device')} &nbsp;|&nbsp; "
         f"Firmware {dev.get('firmware','-')} &nbsp;|&nbsp; "
         f"Serial {dev.get('serial','-')}",
-        st["subtitle"]))
+        _h_sub))
     story.append(Spacer(1, 8))
-    story.append(Paragraph(f"Generated {generated} UTC", st["small"]))
+    story.append(Paragraph(f"Generated {generated} UTC", _h_small))
     story.append(Spacer(1, 14))
 
     # =====================================================================
