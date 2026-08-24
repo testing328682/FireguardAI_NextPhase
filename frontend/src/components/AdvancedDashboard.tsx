@@ -34,6 +34,21 @@ const SEV_COLORS: Record<string, string> = {
   Info: "#7a879b",
 };
 
+const DONUT_TOOLTIP = {
+  contentStyle: {
+    backgroundColor: "#ffffff",
+    color: "#1e293b",
+    border: "1px solid #e2e8f0",
+    fontSize: 11,
+    borderRadius: 6,
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)",
+    padding: "6px 8px",
+  },
+  itemStyle: { color: "#1e293b" },
+  wrapperStyle: { zIndex: 9999 },
+};
+
+
 function localToday() { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`; }
 function localTzOffset() { return new Date().getTimezoneOffset(); }
 function fmtTime(d:Date){return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});}
@@ -597,7 +612,7 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
+               <Tooltip {...DONUT_TOOLTIP} />
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
@@ -663,7 +678,7 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
+               <Tooltip {...DONUT_TOOLTIP} />
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
@@ -796,8 +811,8 @@ function RiskTrendStackedCard({ trend, hidden }: { trend: RiskTrend | null; hidd
                      axisLine={{ stroke: "#7a879b33" }} tickLine={false} height={18} />
               <YAxis domain={[0, maxY]} tick={{ fontSize: 9, fill: "#7a879b" }}
                      axisLine={false} tickLine={false} width={38} />
-              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }}
-                       labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} />
+               <Tooltip {...DONUT_TOOLTIP}
+                        labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} />
               {/* Stack order bottom→top: Low, Medium, High, Critical */}
               {["Low", "Medium", "High", "Critical"].filter((s) => hiddenSet.has(s) === false).map((s) => (
                 <Area key={s} type="monotone" dataKey={s} stackId="1" stroke={SEV_COLORS[s]}
@@ -896,7 +911,7 @@ function FirmwareHealthCard({ data }: { data: Row4Summary | null }) {
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
+               <Tooltip {...DONUT_TOOLTIP} />
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
@@ -963,7 +978,7 @@ function DeviceHealthCard({ data }: { data: Row4Summary | null }) {
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
+               <Tooltip {...DONUT_TOOLTIP} />
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
