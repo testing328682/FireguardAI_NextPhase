@@ -869,7 +869,7 @@ function FirmwareHealthCard({ data }: { data: Row4Summary | null }) {
   const total = fh?.total ?? latest + behind;
   const segments = [
     { name: "Latest", value: latest, color: "#39d98a" },
-    { name: "Behind Latest", value: behind, color: "#ff8a3d" },
+    { name: "Older", value: behind, color: "#ff8a3d" },
   ].filter((s) => s.value > 0);
   const totalForPct = total || 1;
 
@@ -898,6 +898,10 @@ function FirmwareHealthCard({ data }: { data: Row4Summary | null }) {
               </Pie>
               <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
             </PieChart>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
+              <span className="text-[9px] text-ink-500">Total</span>
+            </div>
           </div>
           <div className="flex-1 space-y-1.5 min-w-0">
             {segments.map((s) => (
@@ -961,6 +965,10 @@ function DeviceHealthCard({ data }: { data: Row4Summary | null }) {
               </Pie>
               <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
             </PieChart>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
+              <span className="text-[9px] text-ink-500">Total</span>
+            </div>
           </div>
           <div className="flex-1 space-y-1.5 min-w-0">
             {segments.map((s) => (
