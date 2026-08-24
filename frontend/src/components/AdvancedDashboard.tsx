@@ -591,15 +591,15 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
         <div className="flex-1 flex items-center gap-3 min-h-0">
           {/* Donut — left half */}
           <div className="relative w-[110px] h-[110px] shrink-0 mx-auto">
-            <PieChart width={110} height={110}>
+            <PieChart width={110} height={110} style={{ position: "relative", zIndex: 10 }}>
               <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
                    innerRadius={36} outerRadius={52} paddingAngle={2} strokeWidth={0}
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
             </PieChart>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
               <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
             </div>
@@ -657,15 +657,15 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
       ) : (
         <div className="flex-1 flex items-center gap-3 min-h-0">
           <div className="relative w-[110px] h-[110px] shrink-0 mx-auto">
-            <PieChart width={110} height={110}>
+            <PieChart width={110} height={110} style={{ position: "relative", zIndex: 10 }}>
               <Pie data={segments} dataKey="count" nameKey="label" cx="50%" cy="50%"
                    innerRadius={36} outerRadius={52} paddingAngle={2} strokeWidth={0}
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
             </PieChart>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
               <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
             </div>
@@ -796,7 +796,7 @@ function RiskTrendStackedCard({ trend, hidden }: { trend: RiskTrend | null; hidd
                      axisLine={{ stroke: "#7a879b33" }} tickLine={false} height={18} />
               <YAxis domain={[0, maxY]} tick={{ fontSize: 9, fill: "#7a879b" }}
                      axisLine={false} tickLine={false} width={38} />
-              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }}
+              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }}
                        labelFormatter={(d: string) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })} />
               {/* Stack order bottom→top: Low, Medium, High, Critical */}
               {["Low", "Medium", "High", "Critical"].filter((s) => hiddenSet.has(s) === false).map((s) => (
@@ -890,15 +890,15 @@ function FirmwareHealthCard({ data }: { data: Row4Summary | null }) {
       ) : (
         <div className="flex-1 flex items-center gap-3 min-h-0">
           <div className="relative w-[100px] h-[100px] shrink-0 mx-auto">
-            <PieChart width={100} height={100}>
+            <PieChart width={100} height={100} style={{ position: "relative", zIndex: 10 }}>
               <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
                    innerRadius={33} outerRadius={48} paddingAngle={2} strokeWidth={0}
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
             </PieChart>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
               <span className="text-[9px] text-ink-500">Total</span>
             </div>
@@ -957,15 +957,15 @@ function DeviceHealthCard({ data }: { data: Row4Summary | null }) {
       ) : (
         <div className="flex-1 flex items-center gap-3 min-h-0">
           <div className="relative w-[100px] h-[100px] shrink-0 mx-auto">
-            <PieChart width={100} height={100}>
+            <PieChart width={100} height={100} style={{ position: "relative", zIndex: 10 }}>
               <Pie data={segments} dataKey="value" nameKey="name" cx="50%" cy="50%"
                    innerRadius={33} outerRadius={48} paddingAngle={2} strokeWidth={0}
                    isAnimationActive={false}>
                 {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: "#0f1521", border: "1px solid #2a3447", fontSize: 11, borderRadius: 6 }} />
+              <Tooltip contentStyle={{ background: "#ffffff", color: "#1e293b", border: "1px solid #e2e8f0", fontSize: 11, borderRadius: 6, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)" }} />
             </PieChart>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[16px] font-bold text-ink-100 tabular-nums">{total}</span>
               <span className="text-[9px] text-ink-500">Total</span>
             </div>
