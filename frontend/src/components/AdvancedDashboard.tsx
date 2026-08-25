@@ -635,7 +635,7 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
         </div>
       )}
 
-      <button onClick={() => navigate("/findings")}
+      <button onClick={() => navigate("/security-analytics")}
               className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
         View all findings →
       </button>
@@ -700,7 +700,7 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
         </div>
       )}
 
-      <button onClick={() => navigate("/findings")}
+      <button onClick={() => navigate("/security-analytics")}
               className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
         View details →
       </button>
@@ -867,7 +867,7 @@ function TopRisksCard({ charts }: { charts: DashboardCharts | null }) {
         </div>
       )}
 
-      <button onClick={() => navigate("/findings")}
+      <button onClick={() => navigate("/security-analytics")}
               className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
         View all risks →
       </button>
@@ -1045,7 +1045,7 @@ function RecentlyDetectedCard({ data }: { data: Row4Summary | null }) {
         </div>
       )}
 
-      <button onClick={() => navigate("/findings")}
+      <button onClick={() => navigate("/security-analytics")}
               className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
         View all findings →
       </button>
@@ -1092,7 +1092,7 @@ function RecentlyFixedCard({ data }: { data: Row4Summary | null }) {
         </div>
       )}
 
-      <button onClick={() => navigate("/findings")}
+      <button onClick={() => navigate("/security-analytics")}
               className="self-start text-[11px] text-accent hover:text-ink-100 transition-colors">
         View all resolved findings →
       </button>
