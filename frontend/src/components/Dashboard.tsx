@@ -116,7 +116,7 @@ export function Dashboard() {
               <FunnelStat label="Critical" value={ff.critical_open} delta={ff.critical_delta_24h} color="#ff4d4d" />
               <FunnelStat label="High" value={ff.high_open} delta={ff.high_delta_24h} color="#ff8a3d" />
             </div>
-            <button onClick={() => navigate("/findings")}
+            <button onClick={() => navigate("/security-analytics")}
                     className="w-full px-4 py-2.5 rounded-lg bg-accent/10 border border-accent/30 text-accent text-[13px] font-semibold hover:bg-accent/20 transition-all">
               View all {ff.total_open} open findings →
             </button>
@@ -138,7 +138,7 @@ export function Dashboard() {
             <ul className="space-y-2">
               {data.devices_needing_attention.map((d) => (
                 <li key={d.device_id}
-                    onClick={() => navigate(`/findings?device=${d.device_id}`)}
+                    onClick={() => navigate(`/security-analytics/device-findings?device=${d.device_id}`)}
                     className="flex items-center justify-between gap-3 stat-card !py-2.5 !px-3.5 cursor-pointer group">
                   <div className="min-w-0">
                     <div className="text-ink-100 text-[13px] truncate font-medium group-hover:text-accent transition-colors">{d.friendly_name || d.model || d.serial}</div>
@@ -314,7 +314,7 @@ function FleetPostureTable({ fleet, isMsp }: { fleet: FleetSummary | null; isMsp
             <tbody>
               {rows.map((d) => (
                 <tr key={d.device_id}
-                    onClick={() => navigate(`/findings?device=${d.device_id}`)}
+                    onClick={() => navigate(`/security-analytics/device-findings?device=${d.device_id}`)}
                     className="table-row border-b border-base-500/40 cursor-pointer">
                   <td className="py-2.5 px-4">
                     <span className="text-ink-100 font-medium">{d.model || d.serial}</span>

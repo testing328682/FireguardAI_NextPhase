@@ -71,7 +71,7 @@ export function FindingDetailView({ id, backBase }: { id: string; backBase?: str
     <div className="space-y-5">
       <button onClick={() => {
         if (backBase) { navigate(f.device_id ? `${backBase}?device=${f.device_id}` : backBase); }
-        else { navigate(f.device_id ? `/findings?device=${f.device_id}` : "/findings"); }
+        else { navigate(f.device_id ? `/security-analytics/device-findings?device=${f.device_id}` : "/security-analytics"); }
       }}
               className="font-mono text-[12px] text-ink-300 hover:text-accent">
         ← Back to findings

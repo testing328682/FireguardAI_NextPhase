@@ -241,7 +241,7 @@ export function DeviceDetailView({ id, customers }: { id: string; customers: Cus
         </div>
         {isConfigured && (
           <div className="flex items-center gap-2">
-            <button onClick={() => navigate(`/findings?device=${id}`)}
+            <button onClick={() => navigate(`/security-analytics/device-findings?device=${id}`)}
                     className="px-4 py-2 rounded-lg border border-accent/40 text-accent text-[13px] font-medium hover:bg-accent/10 transition-all">
               Go to Findings
             </button>

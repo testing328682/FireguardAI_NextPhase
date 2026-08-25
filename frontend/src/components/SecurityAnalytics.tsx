@@ -1748,7 +1748,7 @@ export function SecurityAnalytics() {
           />
           <RecentlyChangedWidget
             data={ops.recently_changed}
-            onDeviceClick={(id) => navigate(`/findings?device=${id}`)}
+            onDeviceClick={(id) => navigate(`/security-analytics/device-findings?device=${id}`)}
           />
           <MostCommonFindingsWidget
             findings={charts?.all_findings_list?.length ? charts.all_findings_list : charts?.top_findings ?? []}

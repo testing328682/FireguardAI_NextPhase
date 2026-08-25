@@ -72,7 +72,7 @@ export function Compliance() {
                       <td key={d.device_id} className="px-2 py-1.5 text-center">
                         <button
                           disabled={!fail}
-                          onClick={() => fail && cell.finding_ids[0] && navigate(`/findings/${cell.finding_ids[0]}`)}
+                          onClick={() => fail && cell.finding_ids[0] && navigate(`/security-analytics/finding/${cell.finding_ids[0]}`)}
                           title={fail ? `${cell.finding_ids.length} finding(s) — click to open` : "pass"}
                           className="w-5 h-5 rounded-sm inline-block"
                           style={{ background: fail ? "#ff4d4d" : "#39d98a", cursor: fail ? "pointer" : "default" }}

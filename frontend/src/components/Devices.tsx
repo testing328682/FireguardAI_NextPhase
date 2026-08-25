@@ -904,7 +904,7 @@ function DeviceMenu({ device, onUpdated, onConfigure }: {
             <button onClick={rename}
                     className="w-full text-left px-3 py-2 text-[13px] text-ink-300 hover:bg-accent/10 hover:text-accent transition-colors">Rename</button>
             {device.configured && (
-              <button onClick={() => navigate(`/findings?device=${device.id}`)}
+              <button onClick={() => navigate(`/security-analytics/device-findings?device=${device.id}`)}
                       className="w-full text-left px-3 py-2 text-[13px] text-ink-300 hover:bg-accent/10 hover:text-accent transition-colors">View findings</button>
             )}
             {device.configured && (
