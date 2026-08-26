@@ -7,7 +7,7 @@ import { navigate } from "../lib/router";
 import { gradeColor, fmtDate } from "../lib/ui";
 
 // ── Devices page ──────────────────────────────────────────────────────
-export function Devices({ customers }: { customers: Customer[] }) {
+export function Devices({ customers, onSubtitle }: { customers: Customer[]; onSubtitle?: (s: string | null) => void }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [isMsp, setIsMsp] = useState(false);
   const confirm = useConfirm();
@@ -78,6 +78,16 @@ export function Devices({ customers }: { customers: Customer[] }) {
     return d;
   }, [devices, customerFilter, statusFilter, licenseFilter, firmwareFilter, postureFilter, searchQ]);
 
+  // Report the dynamic subtitle to the top title bar (header consolidation).
+  useEffect(() => {
+    if (!onSubtitle) return;
+    const notConfigured = devices.filter(d => !d.configured).length;
+    let s = `${filtered.length} device${filtered.length !== 1 ? "s" : ""}${customerFilter || searchQ ? " shown" : " onboarded"}`;
+    if (notConfigured > 0) s += ` · ${notConfigured} not configured`;
+    onSubtitle(s);
+    return () => onSubtitle(null);
+  }, [onSubtitle, filtered, customerFilter, searchQ, devices]);
+
   // Reset page when filters or page size change.
   const _filtersKey = `${customerFilter}|${statusFilter.join(",")}|${licenseFilter.join(",")}|${firmwareFilter.join(",")}|${postureFilter.join(",")}|${searchQ}|${pageSize}`;
   useEffect(() => { setPage(1); setSelected(new Set()); }, [_filtersKey]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -129,18 +139,6 @@ export function Devices({ customers }: { customers: Customer[] }) {
     <div className="max-w-[1440px] fade-in space-y-5">
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-100 tracking-tight">Devices</h1>
-          <p className="font-mono text-[11px] text-ink-500 mt-1">
-            {filtered.length} device{filtered.length !== 1 ? "s" : ""}
-            {customerFilter || searchQ ? " shown" : " onboarded"}
-            {devices.filter(d => !d.configured).length > 0 && (
-              <span className="ml-2 text-ink-300">
-                · {devices.filter(d => !d.configured).length} not configured
-              </span>
-            )}
-          </p>
-        </div>
         <div className="flex items-center gap-3">
           {isMsp && (
             <label className="flex items-center gap-2">

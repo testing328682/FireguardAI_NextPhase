@@ -1275,7 +1275,7 @@ function DeviceTable({ devices, customers, isMsp, customerName, searchQ, setSear
 }
 
 // ── Main Security Analytics Page ───────────────────────────────────────
-export function SecurityAnalytics() {
+export function SecurityAnalytics({ onSubtitle }: { onSubtitle?: (s: string | null) => void }) {
   const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1509,20 +1509,22 @@ export function SecurityAnalytics() {
     return () => clearInterval(id);
   }, [autoRefresh, refreshAll]);
 
+  // Report the dynamic subtitle to the top title bar (header consolidation).
+  useEffect(() => {
+    if (!onSubtitle) return;
+    let s = "Executive posture overview";
+    if (customerId) s += ` · Customer: ${customerName(customerId)}`;
+    if (summary) s += ` · ${summary.total_devices} device${summary.total_devices !== 1 ? "s" : ""}`;
+    if (lastUpdated) s += ` · Updated ${timeAgo(lastUpdated.toISOString())}`;
+    onSubtitle(s);
+    return () => onSubtitle(null);
+  }, [onSubtitle, customerId, summary, lastUpdated, customers]);
+
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-[1440px] fade-in space-y-5">
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-100 tracking-tight">Security Analytics</h1>
-          <p className="font-mono text-[11px] text-ink-500 mt-1">
-            Executive posture overview
-            {customerId ? ` · Customer: ${customerName(customerId)}` : ""}
-            {summary ? ` · ${summary.total_devices} device${summary.total_devices !== 1 ? "s" : ""}` : ""}
-            {lastUpdated ? ` · Updated ${timeAgo(lastUpdated.toISOString())}` : ""}
-          </p>
-        </div>
         {/* Center: Customer filter (MSP only) */}
         {isMsp && (
           <div className="flex-1 flex justify-center">

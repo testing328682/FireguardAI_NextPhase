@@ -92,6 +92,7 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [theme, setTheme] = useState(getTheme());
   const route = useHashRoute();
+  const [pageSubtitle, setPageSubtitle] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -200,7 +201,8 @@ export default function App() {
   const title = TITLES[route.split("?")[0]] || ((route.startsWith("/findings") || route.startsWith("/security-analytics")) ? "Finding"
     : route.startsWith("/rules") ? "Rule"
     : route.startsWith("/devices/") ? "Device" : "FireLint");
-  const subtitle = SUBTITLES[route.split("?")[0]];
+  const subtitle = SUBTITLES[route.split("?")[0]]
+    || ((route === "/security-analytics" || route === "/devices" || route === "/analyze") ? (pageSubtitle || undefined) : undefined);
 
   const sidebar = (
     <SidebarNav groups={groups} route={route} onNavigate={go} />
@@ -237,6 +239,7 @@ export default function App() {
           <main className="flex-1 w-full max-w-[1600px] mx-auto px-5 sm:px-6 py-6 space-y-5">
             <Routed route={route} user={user!} customers={customers}
                     onUserChange={setUser}
+                    onSubtitle={setPageSubtitle}
                     onAnalysis={(id, a) => { setAnalysisId(id); setAnalysis(a); }} />
           </main>
         </div>
@@ -381,11 +384,12 @@ function Navigate({ to }: { to: string }) {
   return null;
 }
 
-function Routed({ route, user, customers, onUserChange, onAnalysis }: {
+function Routed({ route, user, customers, onUserChange, onSubtitle, onAnalysis }: {
   route: string;
   user: User;
   customers: Customer[];
   onUserChange: (u: User) => void;
+  onSubtitle: (s: string | null) => void;
   onAnalysis: (id: string | null, a: Analysis) => void;
 }) {
   void onAnalysis;
@@ -401,7 +405,7 @@ function Routed({ route, user, customers, onUserChange, onAnalysis }: {
   const saFindingMatch = matchRoute("/security-analytics/finding/:id", path);
   if (saFindingMatch) return <FindingDetailView id={saFindingMatch.id} backBase="/security-analytics/device-findings" />;
   if (path === "/security-analytics/device-findings") return <FindingsExplorer backRoute="/security-analytics" />;
-  if (path === "/security-analytics") return <SecurityAnalytics />;
+  if (path === "/security-analytics") return <SecurityAnalytics onSubtitle={onSubtitle} />;
 
   const ruleMatch = matchRoute("/rules/:id", path);
   if (ruleMatch) return <RuleDetail id={ruleMatch.id} user={user} />;
@@ -419,7 +423,7 @@ function Routed({ route, user, customers, onUserChange, onAnalysis }: {
   // Devices is where firewalls are added (API or manual TSR upload).
   const deviceMatch = matchRoute("/devices/:id", path);
   if (deviceMatch) return <DeviceDetailView id={deviceMatch.id} customers={customers} />;
-  if (path === "/devices" || path === "/analyze") return <Devices customers={customers} />;
+  if (path === "/devices" || path === "/analyze") return <Devices customers={customers} onSubtitle={onSubtitle} />;
   if (path === "/customers") return <Customers />;
   if (path.startsWith("/customers/")) return <CustomerDetailView id={path.split("/")[2]} />;
   if (path.startsWith("/settings")) {
