@@ -138,7 +138,7 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
         deviceId={deviceId}
         stats={stats}
         onBack={() => { if (backRoute) { navigate(backRoute); } else { setDeviceId(""); } }}
-        findingDetailRoute={backRoute ? "/security-analytics/finding" : "/findings"}
+        findingDetailRoute="/security-analytics/finding"
         deviceSummary={backRoute ? deviceSummary : null}
         deviceRiskTrend={backRoute ? deviceRiskTrend : null}
         deviceCharts={backRoute ? deviceCharts : null}

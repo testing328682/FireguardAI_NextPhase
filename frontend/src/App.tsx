@@ -38,7 +38,6 @@ interface NavGroup { title: string; items: NavItem[] }
 
 const NAV_GROUPS: NavGroup[] = [
   { title: "Overview", items: [
-    { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
     { path: "/advanced-dashboard", label: "Advanced Dashboard", icon: "dashboard" },
     { path: "/analytics", label: "Trends", icon: "trends" },
   ] },
@@ -49,7 +48,6 @@ const NAV_GROUPS: NavGroup[] = [
     { path: "/customers", label: "Customers", icon: "customers", mspOnly: true },
   ] },
   { title: "Security", items: [
-    { path: "/findings", label: "Findings", icon: "findings" },
     { path: "/security-analytics", label: "Security Analytics", icon: "findings" },
     { path: "/rules", label: "Rules", icon: "rules" },
     { path: "/compliance", label: "Compliance", icon: "compliance" },
@@ -71,7 +69,7 @@ const PROFILE_LINKS = [
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard", "/advanced-dashboard": "Advanced Security Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
+  "/dashboard": "Legacy Dashboard", "/advanced-dashboard": "Advanced Security Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
   "/customers": "Customers",
   "/customers/": "Customer", "/findings": "Findings", "/security-analytics": "Security Analytics", "/rules": "Detection Rules",
   "/compliance": "Compliance", "/integrations": "Integrations", "/platform": "Platform Operations",
@@ -104,7 +102,7 @@ export default function App() {
         const refresh = params.get("refresh");
         if (access && refresh) {
           api.applySsoTokens(access, refresh);
-          window.location.hash = "/dashboard";
+          window.location.hash = "/advanced-dashboard";
         }
       }
       if (!isAuthed()) { setMode("login"); return; }
@@ -112,7 +110,7 @@ export default function App() {
         const u = await api.me();
         setUser(u);
         await loadContext();
-        if (!currentPath() || currentPath() === "/") navigate("/dashboard");
+        if (!currentPath() || currentPath() === "/") navigate("/advanced-dashboard");
         setMode("app");
       } catch {
         setMode("login");
@@ -154,7 +152,7 @@ export default function App() {
   if (mode === "login") {
     return (
       <Login
-        onAuthed={async (u) => { setUser(u); await loadContext(); navigate(u.is_superadmin ? "/platform" : "/dashboard"); setMode("app"); }}
+        onAuthed={async (u) => { setUser(u); await loadContext(); navigate(u.is_superadmin ? "/platform" : "/advanced-dashboard"); setMode("app"); }}
         onDemo={enterDemo}
       />
     );
@@ -199,7 +197,7 @@ export default function App() {
     : NAV_GROUPS.map((g) => ({
         ...g, items: g.items.filter((it) => !it.mspOnly || isMsp),
       }));
-  const title = TITLES[route.split("?")[0]] || (route.startsWith("/findings") ? "Finding"
+  const title = TITLES[route.split("?")[0]] || ((route.startsWith("/findings") || route.startsWith("/security-analytics")) ? "Finding"
     : route.startsWith("/rules") ? "Rule"
     : route.startsWith("/devices/") ? "Device" : "FireLint");
   const subtitle = SUBTITLES[route.split("?")[0]];
@@ -268,7 +266,6 @@ function SidebarNav({ groups, route, onNavigate }:
               {g.items.map((it) => {
                 const IconCmp = Icon[it.icon];
                 const active = route === it.path || route.startsWith(it.path + "/") ||
-                  (it.path === "/findings" && route.startsWith("/findings")) ||
                   (it.path === "/rules" && route.startsWith("/rules"));
                 return (
                   <button key={it.path} onClick={() => onNavigate(it.path)}
@@ -378,6 +375,12 @@ function ProfileMenu({ user, open, setOpen, theme, onToggleTheme, onSignOut }:
   );
 }
 
+// One-shot redirect used for retired routes; triggers the next hash change render.
+function Navigate({ to }: { to: string }) {
+  useEffect(() => { navigate(to); }, [to]);
+  return null;
+}
+
 function Routed({ route, user, customers, onUserChange, onAnalysis }: {
   route: string;
   user: User;
@@ -388,9 +391,13 @@ function Routed({ route, user, customers, onUserChange, onAnalysis }: {
   void onAnalysis;
   const path = route.split("?")[0];
 
-  const findingMatch = matchRoute("/findings/:id", path);
-  if (findingMatch) return <FindingDetailView id={findingMatch.id} />;
-  if (path === "/findings") return <FindingsExplorer />;
+  // Retired routes: Legacy Dashboard → Advanced Security Dashboard,
+  // Findings → Security Analytics (finding detail preserved).
+  const legacyFindingMatch = matchRoute("/findings/:id", path);
+  if (legacyFindingMatch) return <Navigate to={`/security-analytics/finding/${legacyFindingMatch.id}`} />;
+  if (path === "/findings") return <Navigate to="/security-analytics" />;
+  if (path === "/dashboard") return <Navigate to="/advanced-dashboard" />;
+
   const saFindingMatch = matchRoute("/security-analytics/finding/:id", path);
   if (saFindingMatch) return <FindingDetailView id={saFindingMatch.id} backBase="/security-analytics/device-findings" />;
   if (path === "/security-analytics/device-findings") return <FindingsExplorer backRoute="/security-analytics" />;

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 
 export function currentPath(): string {
   const h = window.location.hash.replace(/^#/, "");
-  return h || "/dashboard";
+  return h || "/advanced-dashboard";
 }
 
 export function navigate(path: string) {
