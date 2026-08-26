@@ -56,7 +56,7 @@ export function Login({ onAuthed, onDemo }: { onAuthed: (u: User) => void; onDem
         <div className="flex flex-col items-center gap-2 mb-8">
           <Logo />
           <span className="font-display font-bold text-ink-100 text-xl tracking-tight">
-            FirewallGuard<span className="text-accent"> AI</span>
+            <span style={{ color: "#E8591F" }}>Fire</span>Lint
           </span>
           <p className="font-mono text-[11px] text-ink-500">Continuous SonicWall Security Posture</p>
         </div>
@@ -107,7 +107,7 @@ export function Login({ onAuthed, onDemo }: { onAuthed: (u: User) => void; onDem
           ) : (
             <>
               <h1 className="font-display font-semibold text-ink-100 text-center">Welcome Back</h1>
-              <p className="text-ink-500 text-[13px] text-center mt-1 mb-5">Sign in to your FirewallGuard account.</p>
+              <p className="text-ink-500 text-[13px] text-center mt-1 mb-5">Sign in to your FireLint account.</p>
               <form onSubmit={submit} className="space-y-4">
                 <Input label="Email" type="email" value={email} onChange={setEmail} autoFocus placeholder="you@example.com" />
                 <Input label="Password" type="password" value={password} onChange={setPassword} placeholder="········" />
@@ -115,7 +115,7 @@ export function Login({ onAuthed, onDemo }: { onAuthed: (u: User) => void; onDem
                 <Submit busy={busy} label="Sign in" busyLabel="Signing in…" />
               </form>
               <p className="text-center text-[13px] text-ink-500 mt-4">
-                New to FirewallGuard?{" "}
+                New to FireLint?{" "}
                 <button onClick={() => { setView("register"); setErr(null); }} className="text-accent hover:underline font-medium">Create an account</button>
               </p>
             </>
@@ -168,17 +168,19 @@ function ErrorMsg({ msg }: { msg: string }) {
 // ── Logo ──────────────────────────────────────────────────────────────
 export function Logo() {
   return (
-    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#4f8cff" />
-          <stop offset="100%" stopColor="#39d98a" />
-        </linearGradient>
-      </defs>
-      <path d="M20 3 34 8v10c0 9-6 16-14 19C12 34 6 27 6 18V8L20 3Z"
-            stroke="url(#logoGrad)" strokeWidth="2" fill="#4f8cff10" />
-      <path d="M20 12v10m0 0 4-3m-4 3-4-3" stroke="#39d98a" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="40" height="40" viewBox="150 60 300 230" fill="none" aria-hidden="true">
+      <path d="M225 75 L180 160 L225 245" stroke="#FFFFFF" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M375 75 L420 160 L375 245" stroke="#FFFFFF" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M300 95 L335 112 L335 175 C335 228 315 258 300 273 C285 258 265 228 265 175 L265 112 Z" fill="#E8591F" stroke="#E8591F" strokeWidth="3" strokeLinejoin="round" />
+      <line x1="275" y1="135" x2="325" y2="135" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="275" y1="168" x2="325" y2="168" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="275" y1="201" x2="325" y2="201" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="275" y1="234" x2="325" y2="234" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="292" y1="112" x2="292" y2="135" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="314" y1="135" x2="314" y2="168" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="292" y1="168" x2="292" y2="201" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="314" y1="201" x2="314" y2="234" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
+      <line x1="292" y1="234" x2="292" y2="268" stroke="#0A192F" strokeWidth="5" opacity="0.5" />
     </svg>
   );
 }

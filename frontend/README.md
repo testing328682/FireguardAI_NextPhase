@@ -1,6 +1,6 @@
-# FirewallGuard AI — Web App
+# FireLint — Web App
 
-A single-page web interface for FirewallGuard AI. Upload a SonicWall Tech
+A single-page web interface for FireLint. Upload a SonicWall Tech
 Support Report (TSR), watch the analysis run, then view findings, attack paths
 and firmware intelligence on screen and download the executive PDF, technical
 PDF, CSV or JSON.

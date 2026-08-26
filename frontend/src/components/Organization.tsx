@@ -85,7 +85,7 @@ function ResidencyBrandingCard() {
           <div className="bg-white rounded-panel p-4 border border-base-500">
             <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: "#e2e8f0" }}>
               <span className="font-bold text-sm" style={{ color }}>
-                {org.brand_company_name || "FirewallGuard AI"}
+                {org.brand_company_name || "FireLint"}
               </span>
               <span className="text-[10px]" style={{ color: "#64748b" }}>
                 {org.brand_contact || "Continuous Security Analysis for SonicWall Firewalls"}

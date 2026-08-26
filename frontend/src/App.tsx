@@ -201,7 +201,7 @@ export default function App() {
       }));
   const title = TITLES[route.split("?")[0]] || (route.startsWith("/findings") ? "Finding"
     : route.startsWith("/rules") ? "Rule"
-    : route.startsWith("/devices/") ? "Device" : "FirewallGuard AI");
+    : route.startsWith("/devices/") ? "Device" : "FireLint");
   const subtitle = SUBTITLES[route.split("?")[0]];
 
   const sidebar = (
@@ -253,8 +253,8 @@ function SidebarNav({ groups, route, onNavigate }:
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-base-500 bg-gradient-to-r from-base-800 to-transparent">
         <Logo />
-        <span className="font-display font-bold text-ink-100 tracking-tight">
-          FirewallGuard<span className="text-accent"> AI</span>
+        <span className="font-display font-bold text-ink-100 text-2xl tracking-tight">
+          <span style={{ color: "#E8591F" }}>Fire</span>Lint
         </span>
         {groups.some(g => g.title === "Operator") && (
           <span className="badge ml-auto" style={{ color: "#c084fc", borderColor: "#c084fc55", background: "#c084fc14" }}>OPERATOR</span>

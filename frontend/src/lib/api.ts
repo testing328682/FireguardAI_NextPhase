@@ -1,4 +1,4 @@
-// API client for the FirewallGuard AI backend.
+// API client for the FireLint backend.
 //
 // Tokens are kept in memory and mirrored to sessionStorage so a page refresh
 // during a working session keeps the user signed in. All calls attach the

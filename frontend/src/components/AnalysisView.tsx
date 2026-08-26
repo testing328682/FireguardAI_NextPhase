@@ -19,7 +19,7 @@ function DownloadBar({ analysisId, demo }: { analysisId: string | null; demo: bo
       const blob = await api.downloadReport(analysisId, kind);
       const ext = kind === "csv" ? "csv" : kind === "json" ? "json" : "pdf";
       const label = kind === "executive" || kind === "technical" ? `${kind}-report` : `findings`;
-      triggerDownload(blob, `firewallguard-${label}-${analysisId.slice(0, 8)}.${ext}`);
+      triggerDownload(blob, `firelint-${label}-${analysisId.slice(0, 8)}.${ext}`);
     } catch {
       setErr("Download failed. Confirm the analysis is complete and you are signed in.");
     } finally {
