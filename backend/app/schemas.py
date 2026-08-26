@@ -14,6 +14,18 @@ from .models import (
 )
 
 
+# ---- page control (global Server Admin visibility switches) --------------
+class PageControlOut(BaseModel):
+    key: str
+    label: str
+    description: str = ""
+    enabled: bool
+
+
+class PageControlUpdate(BaseModel):
+    enabled: bool
+
+
 # ---- auth ----------------------------------------------------------------
 class Token(BaseModel):
     access_token: str

@@ -48,6 +48,20 @@ def test_sso_provision_user(db_schema, org_a):
 
 
 def test_sso_config_crud_and_status(client, org_a):
+    # Page Control: SSO config APIs are gated unless the SSO page is enabled.
+    db = SessionLocal()
+    try:
+        from app.models import PageControlSetting
+        row = db.query(PageControlSetting).filter(PageControlSetting.key == "sso").one_or_none()
+        if row is None:
+            row = PageControlSetting(key="sso", label="SAML / OIDC / Single Sign-On",
+                                     description="Configure customer SSO capabilities", enabled=True)
+            db.add(row)
+        else:
+            row.enabled = True
+        db.commit()
+    finally:
+        db.close()
     h = auth_headers(client, org_a["email"], org_a["password"])
     put = client.put("/api/v1/sso/config", headers=h, json={
         "enabled": True, "protocol": "oidc",

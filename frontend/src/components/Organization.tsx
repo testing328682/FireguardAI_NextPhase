@@ -6,11 +6,19 @@ import { fmtDate } from "../lib/ui";
 
 // /settings/organization — plan & billing, residency & branding, SSO, PSIRT.
 export function Organization() {
+  // Page Control: the SAML/OIDC/SSO section is hidden until the Server Admin
+  // enables it globally (GET /api/v1/page-control → sso flag).
+  const [ssoVisible, setSsoVisible] = useState(false);
+  useEffect(() => {
+    api.pageControlState()
+      .then((s) => setSsoVisible(s.sso === true))
+      .catch(() => {});
+  }, []);
   return (
     <div className="space-y-5">
       <BillingCard />
       <ResidencyBrandingCard />
-      <SSOCard />
+      {ssoVisible && <SSOCard />}
       <PsirtCard />
     </div>
   );

@@ -27,6 +27,7 @@ import { AdvancedDashboard } from "./components/AdvancedDashboard";
 import { ApiFlowConfigPage } from "./components/ApiFlowConfig";
 import { PlanManager } from "./components/PlanManager";
 import { ModalHost } from "./components/Modal";
+import { PageControl } from "./components/PageControl";
 import { Icon, type IconName } from "./components/icons";
 import { useHashRoute, navigate, matchRoute, currentPath } from "./lib/router";
 import { toggleTheme, getTheme } from "./lib/theme";
@@ -75,10 +76,12 @@ const TITLES: Record<string, string> = {
   "/compliance": "Compliance", "/integrations": "Integrations", "/platform": "Platform Operations",
   "/plans": "Plan Management", "/tsr-tester": "TSR Analysis Tester",
   "/api-config": "API TSR Parser Config",
+  "/page-control": "Page Control",
   "/settings/profile": "Settings", "/settings/organization": "Settings", "/settings/api-tokens": "Settings",
 };
 const SUBTITLES: Record<string, string> = {
   "/advanced-dashboard": "Comprehensive security posture and risk analytics",
+  "/page-control": "Control which pages and features are available to customer organizations.",
 };
 
 export default function App() {
@@ -185,6 +188,7 @@ export default function App() {
           { path: "/builder", label: "Rule Builder", icon: "rules" },
           { path: "/tsr-tester", label: "TSR Tester", icon: "devices" },
           { path: "/api-config", label: "API TSR Parser Config", icon: "integrations" },
+          { path: "/page-control", label: "Page Control", icon: "platform" },
           { path: "/config", label: "Product Config", icon: "platform" },
         ]},
         { title: "MSP", items: [
@@ -418,6 +422,7 @@ function Routed({ route, user, customers, onUserChange, onSubtitle, onAnalysis }
   if (path === "/builder") return <CelBuilder user={user} />;
   if (path === "/tsr-tester") return user?.is_superadmin ? <TsrTester /> : <Dashboard />;
   if (path === "/api-config") return user?.is_superadmin ? <ApiFlowConfigPage /> : <Dashboard />;
+  if (path === "/page-control") return user?.is_superadmin ? <PageControl /> : <Dashboard />;
   if (path === "/config") return <ProductConfig />;
   if (path === "/integrations") return <Integrations />;
   // Devices is where firewalls are added (API or manual TSR upload).

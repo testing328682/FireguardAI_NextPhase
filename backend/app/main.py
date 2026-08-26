@@ -21,7 +21,7 @@ from .routers import (
     findings, schedules, dashboard, audit_log,
     rules, compliance, integrations, tokens,
     sso, billing, psirt, privacy, analytics, platform,
-    platform_config, plans, licenses,
+    platform_config, plans, licenses, page_control,
 )
 
 settings = get_settings()
@@ -72,8 +72,9 @@ for module in (auth, devices, analyses, reports, fleet, alerts,
                findings, schedules, dashboard, audit_log,
                 rules, compliance, integrations, tokens,
                 sso, billing, psirt, privacy, analytics, platform, platform_config,
-                plans, licenses):
+                plans, licenses, page_control):
     app.include_router(module.router)
+app.include_router(page_control.public_router)
 
 
 @app.on_event("startup")
@@ -105,6 +106,12 @@ def _ensure_schema() -> None:
                     "ALTER TABLE devices ADD COLUMN IF NOT EXISTS was_ever_configured BOOLEAN DEFAULT FALSE"))
             # ApiConnectionLog table (2026-07-05) — create_all handles new tables
             conn.commit()
+        # Page Control (2026-08-26): seed rows for every catalogued page so the
+        # admin page and customer flags work immediately after a rebuild.
+        from .database import SessionLocal
+        from . import page_control as page_control_mod
+        with SessionLocal() as db:
+            page_control_mod.ensure_default_settings(db)
     except Exception as exc:  # noqa: BLE001 - never block app startup on this
         import logging
         logging.getLogger(__name__).warning("startup create_all skipped: %s", exc)

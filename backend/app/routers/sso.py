@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import page_control as page_control_mod
 from ..config import get_settings
 from ..database import get_db
 from ..models import User, Role, SSOConfig, SSOProtocol
@@ -20,6 +21,7 @@ from ..security import require_role
 from ..crypto import encrypt
 from .. import sso as sso_mod
 from .. import audit
+from .. import page_control as page_control_mod
 
 router = APIRouter(prefix="/api/v1/sso", tags=["sso"])
 settings = get_settings()
@@ -89,9 +91,20 @@ def saml_acs(SAMLResponse: str = Form(...), RelayState: str = Form(""),
 
 
 # ---- configuration (admin) ----------------------------------------------
+def _require_sso_config_enabled(db: Session, user: User) -> None:
+    """Page Control gate: configuration APIs are off for customers while the
+    SAML/OIDC/SSO page is disabled. Server Admins bypass (they manage the flag).
+    """
+    if not getattr(user, "is_superadmin", False) and not page_control_mod.is_page_enabled(db, "sso"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SSO configuration is disabled by your service provider")
+
+
 @router.get("/config", response_model=SSOConfigOut)
 def get_config(user: User = Depends(require_role(Role.admin)),
                db: Session = Depends(get_db)) -> SSOConfigOut:
+    _require_sso_config_enabled(db, user)
     cfg = _config(db, user.organization_id)
     if cfg is None:
         return SSOConfigOut(
@@ -112,6 +125,7 @@ def get_config(user: User = Depends(require_role(Role.admin)),
 def put_config(body: SSOConfigIn, request: Request,
                user: User = Depends(require_role(Role.admin)),
                db: Session = Depends(get_db)) -> SSOConfigOut:
+    _require_sso_config_enabled(db, user)
     cfg = _config(db, user.organization_id)
     if cfg is None:
         cfg = SSOConfig(organization_id=user.organization_id)

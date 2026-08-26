@@ -67,6 +67,9 @@ def main() -> None:
         from .api_flow import ensure_default_config
         ensure_default_config(db)
         print("Ensured default API flow config (SonicOS Gen7).")
+        from .page_control import ensure_default_settings
+        ensure_default_settings(db)
+        print("Ensured default page control settings (SSO disabled).")
     finally:
         db.close()
 

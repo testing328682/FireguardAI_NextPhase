@@ -892,3 +892,10 @@ export interface LicensePurchase {
   purchased_at: string | null;
   expires_at: string | null;
 }
+
+export interface PageControlItem {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}

@@ -751,6 +751,26 @@ class ApiFlowConfig(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class PageControlSetting(Base):
+    """Global (platform-level) visibility switch for a customer-facing page/feature.
+
+    One row per controllable page, keyed by a stable string (see
+    ``app.page_control.PAGE_CONTROL_CATALOG``). Managed by Server Admins on the
+    Page Control page; applies to every customer organization. Rows are created
+    automatically for every catalog key at startup/bootstrap, so adding a future
+    page only requires a new catalog entry.
+    """
+    __tablename__ = "page_control_settings"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String(512), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)  # opt-in: new pages start disabled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class DeviceGeneration(Base):
     """A device generation (e.g. Gen 7, Gen 8)."""
     __tablename__ = "device_generations"

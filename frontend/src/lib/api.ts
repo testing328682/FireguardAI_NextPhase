@@ -29,6 +29,7 @@ import type {
   TsrTestResult,
   ApiFlowConfig,
   ApiFlowTestResult,
+  PageControlItem,
   PsirtRefresh,
   SSOConfig,
   Trends,
@@ -508,6 +509,14 @@ export const api = {
 
   // ---- platform operator (superadmin) ----
   platformOverview: () => json<PlatformOverview>("/platform/overview"),
+  // ---- page control (superadmin) ----
+  listPageControls: () => json<PageControlItem[]>("/platform/page-control"),
+  updatePageControl: (key: string, enabled: boolean) =>
+    json<PageControlItem>(`/platform/page-control/${key}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),
+    }),
+  // Customer-facing visibility flags (any authenticated user).
+  pageControlState: () => json<Record<string, boolean>>("/page-control"),
   // Ad-hoc TSR analysis (superadmin tester). format: auto | gui | api.
   platformAnalyzeTsr: async (file: File, format: "auto" | "gui" | "api" = "auto") => {
     const form = new FormData();
