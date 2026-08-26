@@ -15,6 +15,7 @@ import io
 import ipaddress
 import json
 import logging
+import os
 import socket
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -37,6 +38,14 @@ _max_logo_w = 1.8 * inch
 _max_logo_h = 0.9 * inch
 _logo_timeout = 10.0
 _logo_max_bytes = 2 * 1024 * 1024
+
+# ── Default application branding (used when an organization has not
+# configured its own white-label values; each field falls back independently) ──
+_DEFAULT_COMPANY_NAME = "FirewallGuard AI"
+_DEFAULT_TAGLINE = "Continuous Security Analysis for SonicWall Firewalls"
+# Bundled with the backend so default branding never depends on the customer's
+# browser or any external asset server during PDF generation.
+_DEFAULT_LOGO_PATH = os.path.join(os.path.dirname(__file__), "templates", "logo-default.svg")
 
 _PRIVATE_NETS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -92,13 +101,11 @@ def _load_logo(branding: Optional[Dict[str, Any]],
       - 'buf' (raster): a BytesIO of PNG bytes
       - 'width', 'height': rendered dimensions in points
     """
-    if not branding:
-        return None
-    url = (branding.get("logo_url") or "").strip()
-    if not url:
-        return None
-    if not _is_safe_url(url):
-        return None
+    url = ((branding or {}).get("logo_url") or "").strip()
+    if not url or not _is_safe_url(url):
+        # No custom logo (or an unusable one): fall back to the bundled
+        # application logo so the header branding is always present.
+        return _load_default_logo(max_width, max_height)
     try:
         resp = httpx.get(url, timeout=_logo_timeout, follow_redirects=True)
         resp.raise_for_status()
@@ -140,6 +147,42 @@ def _load_logo(branding: Optional[Dict[str, Any]],
         return None
     except Exception as e:
         _log.warning(f"Logo load failed for {url}: {e}")
+        return None
+
+
+def _svg_logo_descriptor(content: bytes,
+                         max_width: float, max_height: float) -> Optional[Dict[str, Any]]:
+    """Build a canvas-ready SVG descriptor from raw bytes, scaled to fit."""
+    try:
+        from svglib.svglib import svg2rlg
+    except ImportError as e:
+        _log.warning(f"SVG support unavailable: {e}")
+        return None
+    try:
+        drawing = svg2rlg(io.BytesIO(content))
+    except Exception as e:
+        _log.warning(f"svglib failed to parse SVG logo: {e}")
+        return None
+    if drawing is None or drawing.width == 0 or drawing.height == 0:
+        _log.warning("svglib failed to parse SVG logo")
+        return None
+    sx = max_width / drawing.width
+    sy = max_height / drawing.height
+    scale = min(sx, sy)
+    drawing.scale(scale, scale)
+    drawing.width *= scale
+    drawing.height *= scale
+    return {"type": "svg", "drawing": drawing, "width": drawing.width, "height": drawing.height}
+
+
+def _load_default_logo(max_width: float = _max_logo_w,
+                       max_height: float = _max_logo_h) -> Optional[Dict[str, Any]]:
+    """Load the bundled default application logo, or None if it cannot render."""
+    try:
+        with open(_DEFAULT_LOGO_PATH, "rb") as f:
+            return _svg_logo_descriptor(f.read(), max_width, max_height)
+    except Exception as e:
+        _log.warning(f"Default logo load failed: {e}")
         return None
 
 
@@ -219,8 +262,8 @@ def _make_header_footer(branding: Optional[Dict[str, Any]] = None,
     When absent, the report carries default FirewallGuard AI branding.
     """
     b = branding or {}
-    name = b.get("company_name") or "FirewallGuard AI"
-    tagline = b.get("contact") or "Continuous Security Analysis for SonicWall Firewalls"
+    name = b.get("company_name") or _DEFAULT_COMPANY_NAME
+    tagline = b.get("contact") or _DEFAULT_TAGLINE
     try:
         brand_color = colors.HexColor(b["primary_color"]) if b.get("primary_color") else _PALETTE["brand"]
     except (ValueError, KeyError):
@@ -455,10 +498,20 @@ def _esc(text: Any) -> str:
 # Executive report
 # ---------------------------------------------------------------------------
 
+def _report_title(branding: Optional[Dict[str, Any]], kind: str) -> str:
+    """Title with per-field company-name fallback to the app default.
+
+    ``branding`` may carry ``company_name=None`` for unconfigured fields, so the
+    fallback must trigger on empty values, not just missing keys.
+    """
+    name = ((branding or {}).get("company_name") or "").strip() or _DEFAULT_COMPANY_NAME
+    return f"{name} - {kind}"
+
+
 def build_executive_pdf(analysis: Dict[str, Any], path: str,
                         branding: Optional[Dict[str, Any]] = None) -> str:
     st = _styles()
-    report_title = f"{(branding or {}).get('company_name', 'FirewallGuard AI')} - Executive Report"
+    report_title = _report_title(branding, "Executive Report")
     doc = SimpleDocTemplate(path, pagesize=letter,
                             topMargin=0.85 * inch, bottomMargin=0.8 * inch,
                             leftMargin=0.75 * inch, rightMargin=0.75 * inch,
@@ -486,7 +539,7 @@ def build_executive_pdf(analysis: Dict[str, Any], path: str,
             story.append(Paragraph(ap.get("narrative", ""), st["body"]))
             story.append(Spacer(1, 6))
 
-    _hf = _make_header_footer(branding)
+    _hf = _make_header_footer(branding, logo=_load_logo(branding))
     doc.build(story, onFirstPage=_hf, onLaterPages=_hf)
     return path
 
@@ -498,7 +551,7 @@ def build_executive_pdf(analysis: Dict[str, Any], path: str,
 def build_technical_pdf(analysis: Dict[str, Any], path: str,
                         branding: Optional[Dict[str, Any]] = None) -> str:
     st = _styles()
-    report_title = f"{(branding or {}).get('company_name', 'FirewallGuard AI')} - Device Findings Report"
+    report_title = _report_title(branding, "Device Findings Report")
     doc = SimpleDocTemplate(path, pagesize=letter,
                             topMargin=0.75 * inch, bottomMargin=0.7 * inch,
                             leftMargin=0.7 * inch, rightMargin=0.7 * inch,
@@ -666,7 +719,7 @@ def build_comparison_pdf(previous: Dict[str, Any], current: Dict[str, Any],
     and newer TSR respectively.
     """
     st = _styles()
-    report_title = f"{(branding or {}).get('company_name', 'FirewallGuard AI')} - TSR Comparison Report"
+    report_title = _report_title(branding, "TSR Comparison Report")
     doc = SimpleDocTemplate(path, pagesize=letter,
                             topMargin=0.7 * inch, bottomMargin=0.6 * inch,
                             leftMargin=0.6 * inch, rightMargin=0.6 * inch,
@@ -785,7 +838,7 @@ def build_comparison_pdf(previous: Dict[str, Any], current: Dict[str, Any],
     ]))
     story.append(sbs_t)
 
-    _hf = _make_header_footer(branding)
+    _hf = _make_header_footer(branding, logo=_load_logo(branding))
     doc.build(story, onFirstPage=_hf, onLaterPages=_hf)
     return path
 

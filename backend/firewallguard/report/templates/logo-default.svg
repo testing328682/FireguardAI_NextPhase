@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="#0A192F"/>
+  <g transform="translate(-34 -6.28) scale(0.22)">
+    <path d="M225 75 L180 160 L225 245" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M375 75 L420 160 L375 245" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M300 95 L335 112 L335 175 C335 228 315 258 300 273 C285 258 265 228 265 175 L265 112 Z" fill="#E8591F" stroke="#E8591F" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="275" y1="135" x2="325" y2="135" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="275" y1="168" x2="325" y2="168" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="275" y1="201" x2="325" y2="201" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="275" y1="234" x2="325" y2="234" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="292" y1="112" x2="292" y2="135" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="314" y1="135" x2="314" y2="168" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="292" y1="168" x2="292" y2="201" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="314" y1="201" x2="314" y2="234" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+    <line x1="292" y1="234" x2="292" y2="268" stroke="#0A192F" stroke-width="5" opacity="0.5"/>
+  </g>
+</svg>
