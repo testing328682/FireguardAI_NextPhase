@@ -38,7 +38,7 @@ interface NavGroup { title: string; items: NavItem[] }
 
 const NAV_GROUPS: NavGroup[] = [
   { title: "Overview", items: [
-    { path: "/advanced-dashboard", label: "Advanced Dashboard", icon: "dashboard" },
+    { path: "/advanced-dashboard", label: "Dashboard", icon: "dashboard" },
     { path: "/analytics", label: "Trends", icon: "trends" },
   ] },
   { title: "Assets", items: [
@@ -69,7 +69,7 @@ const PROFILE_LINKS = [
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Legacy Dashboard", "/advanced-dashboard": "Advanced Security Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
+  "/dashboard": "Legacy Dashboard", "/advanced-dashboard": "Dashboard", "/analytics": "Security Trends", "/devices": "Devices",
   "/customers": "Customers",
   "/customers/": "Customer", "/findings": "Findings", "/security-analytics": "Security Analytics", "/rules": "Detection Rules",
   "/compliance": "Compliance", "/integrations": "Integrations", "/platform": "Platform Operations",
