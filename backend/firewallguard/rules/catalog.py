@@ -687,7 +687,7 @@ def rule_hygiene(snap: Snapshot) -> List[Finding]:
                       for r in unused][:10] + [f"Device uptime at TSR capture: {snap.get('system', {}).get('uptime', 'unknown')}"],
             business_impact="Stale allows widen the attack surface beyond business need.",
             technical_impact="Unneeded permitted paths persist in the policy.",
-            remediation="Track usage across consecutive TSR uploads (FirewallGuard drift view) and decommission rules unused for 90+ days.",
+            remediation="Track usage across consecutive TSR uploads (FireLint drift view) and decommission rules unused for 90+ days.",
             verification=["Compare hit counters across the next monthly TSR"],
             risk_reduction="Low", references=[SW_BP],
             likelihood=2, impact=2, exposure=2, affected_count=len(unused)))
@@ -836,7 +836,7 @@ def cert_checks(snap: Snapshot) -> List[Finding]:
             evidence=soon[:10],
             business_impact="Unplanned expiry of the management/SSL VPN certificate interrupts remote access.",
             technical_impact="TLS services fail validation at expiry.",
-            remediation="Schedule renewal now; automate expiry alerting via FirewallGuard email alerts.",
+            remediation="Schedule renewal now; automate expiry alerting via FireLint email alerts.",
             verification=["Confirm renewed certificates are installed and bound"],
             risk_reduction="Low", references=[SW_BP],
             likelihood=3, impact=3, exposure=2, affected_count=len(soon)))

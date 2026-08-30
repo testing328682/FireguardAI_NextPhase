@@ -82,7 +82,7 @@ def test_integration(integration_id: str, user: User = Depends(require_role(Role
     if not url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No webhook URL configured")
-    text = "FirewallGuard AI test message — your integration is configured correctly."
+    text = "FireLint test message — your integration is configured correctly."
     try:
         payload = json.dumps({"text": text}).encode("utf-8")
         req = urllib.request.Request(url, data=payload,

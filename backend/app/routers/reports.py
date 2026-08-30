@@ -59,7 +59,7 @@ def executive_report(analysis_id: str,
                      db: Session = Depends(get_db)) -> StreamingResponse:
     analysis = _load_complete(analysis_id, user, db)
     return _pdf_stream(gen.build_executive_pdf, analysis.result_json,
-                       f"firewallguard-executive-{analysis_id[:8]}.pdf",
+                       f"firelint-executive-{analysis_id[:8]}.pdf",
                        _branding(db, user.organization_id))
 
 
@@ -113,7 +113,7 @@ def technical_report(analysis_id: str,
     enriched["device_id"] = device_id
 
     return _pdf_stream(gen.build_technical_pdf, enriched,
-                       f"firewallguard-technical-{analysis_id[:8]}.pdf",
+                       f"firelint-technical-{analysis_id[:8]}.pdf",
                        _branding(db, user.organization_id))
 
 
@@ -134,7 +134,7 @@ def export_xlsx(analysis_id: str,
     # Summary header.
     dev = result.get("device", {})
     score = result.get("score", {})
-    ws.append([f"FirewallGuard AI — {dev.get('model', 'Device')} {dev.get('serial', '')}"])
+    ws.append([f"FireLint — {dev.get('model', 'Device')} {dev.get('serial', '')}"])
     ws.append([f"Score {score.get('score', 0)}/100  Grade {score.get('grade', '')}",
                f"Findings: {result.get('finding_count', 0)}"])
     ws.append([])

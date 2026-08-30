@@ -4,7 +4,9 @@ empty/null/unset (logo, company name, contact/tagline)."""
 from __future__ import annotations
 
 import os
+import re
 import tempfile
+import zlib
 
 from firewallguard.report import generator as gen
 
@@ -46,9 +48,9 @@ def test_default_logo_file_is_bundled():
 # ---- company-name / title fallback -----------------------------------------
 
 def test_report_title_defaults():
-    assert gen._report_title(None, "Executive Report") == "FirewallGuard AI - Executive Report"
-    assert gen._report_title({"company_name": None}, "Executive Report") == "FirewallGuard AI - Executive Report"
-    assert gen._report_title({"company_name": ""}, "Executive Report") == "FirewallGuard AI - Executive Report"
+    assert gen._report_title(None, "Executive Report") == "FireLint - Executive Report"
+    assert gen._report_title({"company_name": None}, "Executive Report") == "FireLint - Executive Report"
+    assert gen._report_title({"company_name": ""}, "Executive Report") == "FireLint - Executive Report"
 
 
 def test_report_title_custom_company():
@@ -69,3 +71,37 @@ def test_executive_pdf_builds_with_partial_branding():
     gen.build_executive_pdf(_minimal_analysis(), path,
                             {"company_name": "", "contact": "abcsecurity.com"})
     assert os.path.getsize(path) > 1000
+
+
+def _pdf_blob(path: str) -> bytes:
+    """Raw bytes + every decompressed content stream (metadata is uncompressed;
+    drawn text lives in FlateDecode streams)."""
+    data = open(path, "rb").read()
+    chunks = [data]
+    for m in re.finditer(rb"stream\r?\n", data):
+        end = data.find(b"endstream", m.end())
+        if end == -1:
+            continue
+        try:
+            chunks.append(zlib.decompress(data[m.end():end]))
+        except Exception:
+            pass
+    return b"\n".join(chunks)
+
+
+def test_generated_pdf_uses_current_branding():
+    """The old branding name must not appear anywhere in a default-branded
+    executive PDF — metadata, header, footer or content streams."""
+    path = os.path.join(tempfile.mkdtemp(), "exec-branding.pdf")
+    gen.build_executive_pdf(_minimal_analysis(), path)
+    blob = _pdf_blob(path)
+    assert b"FirewallGuard" not in blob, "legacy branding found in generated PDF"
+    assert b"FireLint" in blob, "current branding missing from generated PDF"
+
+
+def test_technical_pdf_uses_current_branding():
+    path = os.path.join(tempfile.mkdtemp(), "tech-branding.pdf")
+    gen.build_technical_pdf(_minimal_analysis(), path)
+    blob = _pdf_blob(path)
+    assert b"FirewallGuard" not in blob, "legacy branding found in generated PDF"
+    assert b"FireLint" in blob, "current branding missing from generated PDF"

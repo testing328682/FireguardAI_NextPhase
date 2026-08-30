@@ -5,7 +5,7 @@ CSV / JSON exports. This module renders all of them from the analysis
 dictionary produced by ``firewallguard.pipeline``.
 
 PDF rendering uses ReportLab's Platypus framework. All colours are defined once
-in ``_PALETTE`` so the report carries consistent FirewallGuard AI branding.
+in ``_PALETTE`` so the report carries consistent FireLint branding.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ _logo_max_bytes = 2 * 1024 * 1024
 
 # ── Default application branding (used when an organization has not
 # configured its own white-label values; each field falls back independently) ──
-_DEFAULT_COMPANY_NAME = "FirewallGuard AI"
+_DEFAULT_COMPANY_NAME = "FireLint"
 _DEFAULT_TAGLINE = "Continuous Security Analysis for SonicWall Firewalls"
 # Bundled with the backend so default branding never depends on the customer's
 # browser or any external asset server during PDF generation.
@@ -259,7 +259,7 @@ def _make_header_footer(branding: Optional[Dict[str, Any]] = None,
     ``branding`` may carry ``company_name``, ``primary_color`` and ``contact``.
     ``logo`` is a pre-loaded logo descriptor (dict from ``_load_logo``)
     drawn to the left of the company name in the header.
-    When absent, the report carries default FirewallGuard AI branding.
+    When absent, the report carries default FireLint branding.
     """
     b = branding or {}
     name = b.get("company_name") or _DEFAULT_COMPANY_NAME

@@ -81,7 +81,7 @@ class Rule:
                 severity="Info", category="Engine",
                 description=f"Rule raised {type(exc).__name__}: {exc}",
                 evidence=[], business_impact="", technical_impact="",
-                remediation="Report this parser/rule defect to FirewallGuard support.",
+                remediation="Report this parser/rule defect to FireLint support.",
                 verification=[], risk_reduction="n/a", likelihood=1, impact=1, exposure=1,
             )]
 

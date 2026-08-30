@@ -1541,7 +1541,7 @@ export function SecurityAnalytics({ onSubtitle }: { onSubtitle?: (s: string | nu
         <div className="flex items-center gap-3">
           <button onClick={() => setGlobalVisOpen(true)}
                   className="px-3 py-2 rounded-lg border border-base-500 text-ink-300 text-[12px] hover:text-accent hover:border-accent transition-all">
-            Configure Filter
+            Global Filter
           </button>
           {/* Time range selector */}
           <div className="flex items-center gap-0.5 bg-base-800 border border-base-500 rounded-lg p-0.5">

@@ -77,15 +77,15 @@ def _build_message(analysis: Analysis, drift: DriftEvent | None,
     if not reasons:
         return None
 
-    subject = (f"[FirewallGuard AI] {device.get('model','Device')} "
+    subject = (f"[FireLint] {device.get('model','Device')} "
                f"{device.get('serial','')} - grade {analysis.grade} ({analysis.score:.0f}/100)")
     body = (
-        f"FirewallGuard AI analysis for {device.get('model')} (serial {device.get('serial')}).\n\n"
+        f"FireLint analysis for {device.get('model')} (serial {device.get('serial')}).\n\n"
         f"Security score: {analysis.score:.0f}/100  Grade: {analysis.grade}\n"
         f"Findings: {analysis.finding_count} "
         f"({analysis.critical_count} critical, {analysis.high_count} high)\n\n"
         f"Alert triggered by: {', '.join(reasons)}.\n\n"
-        "Sign in to FirewallGuard AI to review findings, attack paths and remediation."
+        "Sign in to FireLint to review findings, attack paths and remediation."
     )
     return subject, body
 
@@ -148,13 +148,13 @@ def evaluate_and_send_alerts(db, analysis: Analysis, new_critical: list | None =
     if new_critical:
         device = (analysis.result_json or {}).get("device", {})
         titles = "\n".join(f"  - {f.title}" for f in new_critical[:10])
-        subject = (f"[FirewallGuard AI] {len(new_critical)} new critical finding(s) "
+        subject = (f"[FireLint] {len(new_critical)} new critical finding(s) "
                    f"on {device.get('model','device')} {device.get('serial','')}")
         body = (
             f"A new analysis surfaced {len(new_critical)} new critical finding(s):\n\n"
             f"{titles}\n\n"
             f"Security score: {analysis.score:.0f}/100  Grade: {analysis.grade}\n\n"
-            "Sign in to FirewallGuard AI to triage these findings."
+            "Sign in to FireLint to triage these findings."
         )
         _notify_users(db, analysis.organization_id, "notify_new_critical", subject, body)
         send_slack(db, analysis.organization_id, "new_critical", f"*{subject}*\n{body}")
@@ -164,11 +164,11 @@ def send_scan_failure_alert(db, analysis: Analysis) -> None:
     """Notify opted-in users that an analysis failed."""
     device = db.get(Device, analysis.device_id)
     serial = device.serial if device else analysis.device_id
-    subject = f"[FirewallGuard AI] Scan failed for device {serial}"
+    subject = f"[FireLint] Scan failed for device {serial}"
     body = (
         f"An analysis for device {serial} failed to complete.\n\n"
         f"Error: {analysis.error or 'unknown error'}\n\n"
-        "Sign in to FirewallGuard AI to review and retry."
+        "Sign in to FireLint to review and retry."
     )
     _notify_users(db, analysis.organization_id, "notify_scan_failed", subject, body)
     send_slack(db, analysis.organization_id, "scan_failed", f"*{subject}*\n{body}")
