@@ -32,6 +32,7 @@ backend/
     tsr/parser.py         # Parses sections into structured snapshot dict
     tsr/parser_ext.py     # Extended parsers (flood/DDoS, local users, WLAN, CFS, CPU, auth)
     tsr/normalize.py      # Dual-format support: detect GUI vs API TSR + normalize API→GUI text
+    tsr/generic.py        # Generic full-config capture → snapshot["config"] (complete TSR tree)
     tsr/sonicos_keys.txt  # Harvested GUI-TSR key dictionary (drives API key re-segmentation)
     tsr/sonicos_sections.txt  # Harvested section-name catalog (drives marker restoration)
     rules/engine.py       # Finding dataclass, Rule, RuleRegistry with CEL support
@@ -54,7 +55,7 @@ backend/
     mfa.py                # TOTP (stdlib RFC 6238) + bcrypt-hashed backup codes
     crypto.py             # Fernet encryption for stored secrets (Phase 2)
     sonicos.py            # SonicOS REST client for API-pull devices (Phase 2)
-    rule_engine.py        # CEL evaluator, _SYSTEM_RULE_CEL defaults, evaluate_system_rule_filters(), check_firmware_compliance(), seed_system_rules(), rule_api_support()/api_unsupported_system_keys() (API-TSR support)
+    rule_engine.py        # CEL evaluator, _SYSTEM_RULE_CEL defaults, evaluate_system_rule_filters(), evaluate_authored_system_rules() (generative global rules), check_firmware_compliance(), seed_system_rules(), rule_api_support()/api_unsupported_system_keys() (API-TSR support)
     sso.py                # OIDC (JWKS-verified) + SAML SSO; role mapping (Phase 3)
     ticketing.py          # Jira/ServiceNow create + bidirectional status sync (Phase 3)
     billing.py            # Stripe + plan-limit enforcement + trial workflow + org visibility endpoint (Phase 3)
@@ -120,7 +121,8 @@ frontend/                 # React 18 + TypeScript + Vite + Tailwind
     icons.tsx             # SVG icon components
     Platform.tsx          # Cross-tenant operator dashboard
     ProductConfig.tsx     # Device generations, model mappings, firmware
-    CelBuilder.tsx        # Visual CEL rule builder from parsed TSR data
+    CelBuilder.tsx        # Visual CEL rule builder; lazy searchable explorer
+                          #   over the complete TSR snapshot (snapshot.config)
     Profile.tsx           # User profile settings
     Organization.tsx      # Org settings, billing, branding, SSO
     Compliance.tsx        # Per-framework compliance matrices
@@ -317,6 +319,74 @@ Supported). Superadmins get a **TSR Tester** page (`#/tsr-tester`) backed by
 `POST /api/v1/platform/analyze-tsr` (upload + auto/gui/api, runs the pipeline
 without persisting). Tests: `backend/tests/test_api_tsr.py`, including a
 file-gated GUI/API parity test (`FGAI_GUI_TSR` / `FGAI_API_TSR`).
+
+## Complete TSR snapshot (CEL Rule Builder)
+
+`parse_tsr` attaches a structure-preserving sweep of the **entire** TSR as
+`snapshot["config"]` (`tsr/generic.py`, `build_config_tree`). The curated keys
+(`system`, `administration`, …) are unchanged; `config` is additive, so every
+existing CEL path keeps working. Engine version bumped to 0.10.0.
+
+- **No hardcoded section list.** The tree is driven by the `#…_START/_END`
+  markers in the uploaded TSR; sections nest exactly as their markers nest.
+  Unknown sections/fields are retained, never discarded.
+- **Node shape** (keys omitted when empty): `fields` (typed `Key : Value`
+  pairs; repeated lone keys become lists), `items` (records detected from
+  repeated-key blocks, e.g. per-interface listings), `blocks` (named
+  dash-header blocks: `--Table--` groups and `-----Name-----` records),
+  `lines` (unparsed raw lines, capped at 200/node with `lines_total` marking
+  truncation — dumps are truncated *explicitly*, config is not), `sections`
+  (nested sections). Values are conservatively typed: exact
+  enabled/disabled/yes/no/on/off/true/false → bool, plain integers → int,
+  everything else string; symmetric quotes are unwrapped.
+- **Marker healing.** Real SonicOS TSRs contain mismatched markers (observed:
+  `FIRWARE` for `FIRMWARE`, `PKTIO NIC` vs `PKTIO_NIC`, `AWS API_END` closing
+  `AWS API Details`, `Firewall : Security Policy Table_END` closing
+  `Firewall : Access Rules`). An END that matches no open section exactly or
+  after normalization (casefold, strip non-alphanumerics) closes the innermost
+  open section; an END with nothing open is a stray and is ignored. Without
+  this one unterminated section swallows the rest of the document.
+- **CEL paths** follow the existing convention (`snapshot` root, celpy): dot
+  access for identifier keys, index syntax otherwise, e.g.
+  `snapshot.config["System : Time"].sections["Blade_1_TIME"].fields["Use NTP"] == true`.
+  Because `config` is in the pipeline snapshot, rules built on these paths
+  fire during real scans and are stored in `Analysis.result_json` (~1.5–2.7 MB
+  JSON per real TSR; tree build ~0.2 s, celpy conversion ~0.1 s).
+- **Builder endpoints** (`routers/rules.py`): upload now runs `normalize_tsr`
+  first (API-format TSRs parse identically); the upload response includes
+  `tsr_format`. `POST /rules/builder/test` falls back to the caller's saved
+  `BuilderSnapshot` when neither `snapshot` nor `analysis_id` is supplied, so
+  the UI never re-sends multi-MB snapshots. **Route-order fix:** the builder
+  test route must be declared before `POST /rules/{rule_id}/test` — the
+  dynamic route was capturing `rule_id="builder"` (404 "Rule not found"),
+  which had silently broken the builder's Run Test button.
+- **Frontend** (`CelBuilder.tsx`): `SnapshotExplorer` — lazy tree (children
+  render only when expanded; 150-per-page "Show more" chunks), debounced
+  key/value search with click-to-reveal, CEL-correct path generation
+  (`JSON.stringify` for bracket keys), and click-to-prefill operator/value
+  from the actual TSR value. Container rows have a ⊕ button for exists/size
+  conditions. The Save card offers the same rule metadata as the Rules page
+  creation form — Severity, Category, Remediation (`SEVERITIES` and
+  `RULE_CATEGORIES` are shared from `lib/ui.ts`).
+- **Tests**: `tests/test_generic_config.py` — synthetic-TSR structure/typing/
+  marker-healing/CEL tests plus endpoint tests; reference-TSR tests are gated
+  on `FGAI_TSR_DIR` (default `<repo>/TSRs`) and assert every marker-delimited
+  section appears in the tree.
+- **Authored global rules are generative.** The rules table holds three kinds
+  of rows: catalog mirrors (source=system, key in the Python catalog —
+  findings come from catalog code; stored CEL is only an optional filter,
+  currently feature-flagged off in `make_pipeline_hooks`), tenant custom
+  rules (source=custom — CEL generates findings via `evaluate_custom_rules`),
+  and **authored global rules** (source=system, org NULL, key *outside* the
+  catalog — i.e. saved from the CEL Rule Builder). The latter are evaluated by
+  `rule_engine.evaluate_authored_system_rules()` inside
+  `make_pipeline_hooks.extra_findings_fn`, so they generate findings for
+  every tenant's analyses (all paths: manual TSR upload, API pull, scheduled
+  scans) and flow through suppressions and scoring like any other finding.
+  Before this, a builder-saved system rule was visible in every rule library
+  but never executed — visible rule, no findings.
+  Tests: `tests/test_global_rules.py` (unit + end-to-end via TSR upload +
+  file-gated acceptance test on the reference TSR).
 
 ## Configurable API flow (API TSR Parser Config)
 

@@ -6,6 +6,9 @@ cannot reproduce). This module adds a *hybrid* layer on top:
 
 * ``evaluate_custom_rules`` runs tenant-authored CEL rules (approved + enabled)
   against the parsed snapshot and returns findings to merge into the pipeline.
+* ``evaluate_authored_system_rules`` runs operator-authored *global* CEL rules
+  (created via the CEL Rule Builder: source=system, org NULL, key outside the
+  Python catalog) against every tenant's analyses and returns findings.
 * ``resolve_suppressions`` collects a tenant's active rule suppressions/overrides
   for a device, which the pipeline applies to *all* findings (system + custom).
 * ``seed_system_rules`` mirrors the Python catalog into the ``rules`` table so
@@ -66,11 +69,11 @@ def evaluate_condition(expression: str, snapshot: dict[str, Any]) -> tuple[bool 
         return None, f"evaluation error: {exc}"
 
 
-def _finding_from_rule(rule: Rule) -> Finding:
+def _finding_from_rule(rule: Rule, evidence: str = "Matched custom rule condition.") -> Finding:
     return Finding(
         rule_id=rule.key, title=rule.title, severity=rule.severity,
         category=rule.category or "Custom", description=rule.description,
-        evidence=["Matched custom rule condition."],
+        evidence=[evidence],
         business_impact="", technical_impact="",
         remediation=rule.remediation or "Review the condition and remediate as appropriate.",
         verification=[], risk_reduction="Medium",
@@ -96,6 +99,54 @@ def evaluate_custom_rules(db: Session, organization_id: str,
                 findings.append(_finding_from_rule(rule))
         except Exception as exc:  # noqa: BLE001 - one bad rule must not break the scan
             logger.warning("Custom rule %s failed: %s", rule.key, exc)
+    return findings
+
+
+def _catalog_rule_keys() -> set[str]:
+    """Keys of every built-in Python catalog rule, including retired ones."""
+    import firewallguard.pipeline  # noqa: F401 - registers every catalog rule
+    return {r.id for r in registry.rules} | set(registry.retired)
+
+
+def evaluate_authored_system_rules(db: Session, snapshot: dict[str, Any]) -> list[Finding]:
+    """Evaluate operator-authored global CEL rules and return their findings.
+
+    The rules table holds two kinds of system rows:
+
+    * *catalog mirrors* — one row per built-in Python rule; their findings are
+      produced by the catalog code and the stored CEL is only an optional
+      filter over those findings; and
+    * *authored global rules* — created by a platform operator (CEL Rule
+      Builder → Save as System Rule) with a key that has no catalog
+      counterpart. No catalog code can ever emit findings for these, so they
+      are generative: the CEL condition is evaluated against every tenant's
+      analysis snapshot and a finding is emitted when it is true.
+    """
+    catalog_keys = _catalog_rule_keys()
+    rows = db.scalars(select(Rule).where(
+        Rule.source == RuleSource.system,
+        Rule.organization_id.is_(None),
+        Rule.state == RuleState.approved,
+        Rule.enabled.is_(True),
+        Rule.condition.isnot(None),
+        Rule.condition != "")).all()
+    authored = [r for r in rows if r.key not in catalog_keys]
+    if not authored:
+        return []
+    cel_snapshot = celpy.json_to_cel(snapshot)
+    findings: list[Finding] = []
+    for rule in authored:
+        try:
+            prog = compile_condition(rule.condition)
+            fired = bool(prog.evaluate({"snapshot": cel_snapshot}))
+            logger.debug("Global rule %s (%r): fired=%s", rule.key, rule.title, fired)
+            if fired:
+                findings.append(_finding_from_rule(rule, "Matched global rule condition."))
+        except Exception as exc:  # noqa: BLE001 - one bad rule must not break the scan
+            logger.warning("Global rule %s failed: %s", rule.key, exc)
+    if findings:
+        logger.info("Authored global rules fired: %s",
+                    ", ".join(f.rule_id for f in findings))
     return findings
 
 
@@ -162,7 +213,10 @@ def make_pipeline_hooks(db: Session, organization_id: str, device_id: str | None
     suppressions = resolve_suppressions(db, organization_id, device_id)
 
     def extra_findings_fn(snapshot: dict[str, Any]) -> list[Finding]:
-        return evaluate_custom_rules(db, organization_id, snapshot)
+        # Tenant custom rules plus operator-authored global rules; both are
+        # generative CEL rules and both flow through suppressions + scoring.
+        return (evaluate_custom_rules(db, organization_id, snapshot)
+                + evaluate_authored_system_rules(db, snapshot))
 
     def system_filter_fn(snapshot: dict[str, Any]) -> set[str]:
         # System rule CEL filters are opt-in via a feature flag.
