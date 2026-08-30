@@ -32,3 +32,6 @@ redisdata/
 # Temp/reports
 *.tmp
 reports/
+
+# Local reference TSRs (real customer reports - never publish)
+TSRs/

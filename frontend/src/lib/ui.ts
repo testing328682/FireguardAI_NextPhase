@@ -3,6 +3,16 @@
 export const SEVERITIES = ["Critical", "High", "Medium", "Low", "Info"] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
+// Shared by the Rules page and the CEL Rule Builder so both rule-creation
+// workflows offer identical metadata options.
+export const RULE_CATEGORIES = [
+  "Management Security", "Authentication", "Access Control",
+  "VPN Security", "SSL VPN", "Security Services", "Firmware Security",
+  "Wireless Security", "Logging & Monitoring", "High Availability",
+  "Address Objects", "NAT Policies", "Performance", "Licensing",
+  "Certificates", "Custom",
+];
+
 export const sevColor: Record<string, string> = {
   Critical: "#ff4d4d",
   High: "#ff8a3d",

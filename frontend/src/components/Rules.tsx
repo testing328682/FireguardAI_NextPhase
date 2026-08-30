@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import type { Rule, User } from "../lib/types";
 import { navigate } from "../lib/router";
-import { SEVERITIES, sevColor } from "../lib/ui";
+import { SEVERITIES, RULE_CATEGORIES, sevColor } from "../lib/ui";
 
 const STATE_COLOR: Record<string, string> = {
   draft: "#7a879b", submitted: "#f5c451", approved: "#39d98a",
@@ -10,14 +10,6 @@ const STATE_COLOR: Record<string, string> = {
 const STATE_BG: Record<string, string> = {
   draft: "#7a879b14", submitted: "#f5c45114", approved: "#39d98a14",
 };
-
-const RULE_CATEGORIES = [
-  "Management Security", "Authentication", "Access Control",
-  "VPN Security", "SSL VPN", "Security Services", "Firmware Security",
-  "Wireless Security", "Logging & Monitoring", "High Availability",
-  "Address Objects", "NAT Policies", "Performance", "Licensing",
-  "Certificates", "Custom",
-];
 
 // ── Rule library ──────────────────────────────────────────────────────
 export function Rules({ user }: { user?: User }) {

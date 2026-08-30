@@ -556,7 +556,7 @@ def parse_tsr(text: str, source_name: str = "tsr") -> Snapshot:
             "source": source_name,
             "parsed_at": datetime.utcnow().isoformat() + "Z",
             "section_count": len(doc.sections),
-            "engine_version": "0.9.0",
+            "engine_version": "0.10.0",
         },
         "system": parse_system(doc),
         "licenses": parse_licenses(doc),
@@ -579,4 +579,10 @@ def parse_tsr(text: str, source_name: str = "tsr") -> Snapshot:
     }
     from .parser_ext import enrich_snapshot
     enrich_snapshot(doc, snapshot)
+    # Structure-preserving sweep of the *entire* document, so every TSR
+    # section — including ones no curated parser knows about — is browsable
+    # in the CEL Rule Builder and addressable as snapshot.config[...] in
+    # rules. Added last; it never touches the curated keys above.
+    from .generic import build_config_tree
+    snapshot["config"] = build_config_tree(text)
     return snapshot

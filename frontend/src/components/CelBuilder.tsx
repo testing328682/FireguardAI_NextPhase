@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { api } from "../lib/api";
 import type { BuilderSnapshotRef, RuleTestResult, User } from "../lib/types";
 import { navigate } from "../lib/router";
+import { SEVERITIES, RULE_CATEGORIES } from "../lib/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface ConditionClause {
@@ -69,9 +70,12 @@ export function CelBuilder({ user }: { user: User }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Save
+  // Save — same rule metadata as the Rules page creation form.
   const [ruleTitle, setRuleTitle] = useState("");
   const [ruleKey, setRuleKey] = useState("");
+  const [ruleSeverity, setRuleSeverity] = useState("Medium");
+  const [ruleCategory, setRuleCategory] = useState("Custom");
+  const [ruleRemediation, setRuleRemediation] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -152,6 +156,21 @@ export function CelBuilder({ user }: { user: User }) {
     return parts.join(` ${junctionOp} `);
   }, [clauses, junction]);
 
+  // Select a path from the explorer: prefill operator/value from the actual
+  // TSR value so "equals current value" conditions are one click away.
+  function handleSelectPath(path: string, value: unknown) {
+    setSelPath(path);
+    if (typeof value === "boolean") {
+      setSelOp(value ? "true" : "false");
+      setSelVal("");
+    } else if (value !== null && value !== undefined && typeof value !== "object" && value !== "") {
+      setSelOp("==");
+      setSelVal(String(value));
+    } else {
+      setSelVal("");
+    }
+  }
+
   // Add clause
   function addClause() {
     if (!selPath) return;
@@ -173,10 +192,10 @@ export function CelBuilder({ user }: { user: User }) {
     if ((!selectedId && !snapshot) || !celExpression) return;
     setTesting(true); setTestResult(null); setErr(null);
     try {
-      // For uploaded TSRs, pass the snapshot directly; for stored analyses, pass the analysis_id.
-      const snap = selectedId === "__uploaded__" ? snapshot : undefined;
+      // For uploaded TSRs the server falls back to the persisted builder
+      // snapshot, so the (multi-megabyte) snapshot is never re-sent here.
       const aid = selectedId === "__uploaded__" ? "" : selectedId;
-      setTestResult(await api.testBuilderCondition(aid, celExpression, snap ?? undefined));
+      setTestResult(await api.testBuilderCondition(aid, celExpression));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Test failed");
     } finally { setTesting(false); }
@@ -188,8 +207,9 @@ export function CelBuilder({ user }: { user: User }) {
     setSaving(true); setErr(null);
     try {
       const r = await api.createRule({
-        title: ruleTitle, condition: celExpression, severity: "Medium",
-        source: "system", key: ruleKey, category: "Custom",
+        title: ruleTitle, condition: celExpression, severity: ruleSeverity,
+        source: "system", key: ruleKey, category: ruleCategory,
+        remediation: ruleRemediation,
       } as Record<string, unknown> as Parameters<typeof api.createRule>[0]);
       navigate(`/rules/${r.id}`);
     } catch (e) {
@@ -250,10 +270,10 @@ export function CelBuilder({ user }: { user: User }) {
             {/* Tree */}
             <div className="card-glow p-5">
               <h3 className="font-display font-semibold text-sm text-ink-100 mb-3">TSR Configuration</h3>
-              <p className="font-mono text-[10px] text-ink-500 mb-3">Click a field to build a condition</p>
-              <div className="max-h-[500px] overflow-y-auto space-y-0.5">
-                <SnapshotTree data={snapshot} onSelect={(path) => { setSelPath(path); setSelVal(""); }} selectedPath={selPath} />
-              </div>
+              <p className="font-mono text-[10px] text-ink-500 mb-3">
+                Browse or search the complete parsed TSR — the <span className="text-accent">config</span> branch holds every section of the report. Click a field to build a condition.
+              </p>
+              <SnapshotExplorer snapshot={snapshot} selectedPath={selPath} onSelect={handleSelectPath} />
             </div>
 
             {/* Clause builder */}
@@ -380,6 +400,28 @@ export function CelBuilder({ user }: { user: User }) {
                   <input value={ruleTitle} onChange={(e) => setRuleTitle(e.target.value)}
                          className="mt-1 block w-full bg-base-800 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent" />
                 </label>
+                <div className="flex gap-3">
+                  <label className="block flex-1">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Severity</span>
+                    <select value={ruleSeverity} onChange={(e) => setRuleSeverity(e.target.value)}
+                            className="mt-1 block w-full bg-base-800 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent">
+                      {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="block flex-1">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Category</span>
+                    <select value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value)}
+                            className="mt-1 block w-full bg-base-800 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent">
+                      {RULE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Remediation</span>
+                  <input value={ruleRemediation} onChange={(e) => setRuleRemediation(e.target.value)}
+                         placeholder="e.g. Enable IPS on all security zones"
+                         className="mt-1 block w-full bg-base-800 border border-base-500 rounded-lg px-3 py-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent placeholder:text-ink-500/50" />
+                </label>
                 {err && <p className="font-mono text-[12px] text-sev-high">{err}</p>}
                 <button onClick={saveRule} disabled={!celExpression || !ruleTitle.trim() || !ruleKey.trim() || saving}
                         className="w-full px-4 py-2.5 rounded-lg bg-signal text-white text-[13px] font-semibold hover:brightness-110 disabled:opacity-40 transition-all">
@@ -394,77 +436,224 @@ export function CelBuilder({ user }: { user: User }) {
   );
 }
 
-// ── Snapshot tree browser ──────────────────────────────────────────────
-function SnapshotTree({ data, onSelect, selectedPath, prefix = "snapshot" }: {
-  data: unknown; onSelect: (path: string) => void; selectedPath: string; prefix?: string;
-}) {
-  if (data === null || data === undefined) {
-    return <span className="font-mono text-[11px] text-ink-500 pl-2">null</span>;
-  }
+// ── Snapshot explorer ──────────────────────────────────────────────────
+// Lazily rendered tree over the full parsed snapshot (including the complete
+// `config` sweep of the TSR). Children mount only when a node is expanded,
+// so multi-megabyte snapshots stay responsive. Paths are emitted in the CEL
+// convention used by the rule engine: dot access for identifier-like keys,
+// index syntax (`config["System : Time"]`) for everything else.
 
-  if (typeof data !== "object") {
-    const val = typeof data === "string" ? `"${data}"` : String(data);
+const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const CHUNK = 150;           // children rendered per "Show more" page
+const SEARCH_LIMIT = 200;    // max search hits collected
+
+function joinPath(prefix: string, key: string): string {
+  return IDENT_RE.test(key) ? `${prefix}.${key}` : `${prefix}[${JSON.stringify(key)}]`;
+}
+function isLeaf(v: unknown): boolean {
+  return v === null || typeof v !== "object";
+}
+function leafText(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  return typeof v === "string" ? `"${v}"` : String(v);
+}
+function containerSummary(v: object): string {
+  return Array.isArray(v) ? `[${v.length}]` : `{${Object.keys(v).length}}`;
+}
+
+interface SearchHit {
+  path: string;        // full CEL path
+  ancestors: string[]; // container paths to expand for reveal
+  label: string;       // the matched key / index
+  preview: string;     // value preview (leaves) or child summary
+  leaf: boolean;
+  value: unknown;
+}
+
+function searchSnapshot(root: unknown, query: string): SearchHit[] {
+  const q = query.toLowerCase();
+  const hits: SearchHit[] = [];
+  const walk = (node: unknown, path: string, label: string, ancestors: string[]) => {
+    if (hits.length >= SEARCH_LIMIT) return;
+    if (isLeaf(node)) {
+      const preview = leafText(node);
+      if (label.toLowerCase().includes(q) || preview.toLowerCase().includes(q)) {
+        hits.push({ path, ancestors, label, preview, leaf: true, value: node });
+      }
+      return;
+    }
+    if (label.toLowerCase().includes(q)) {
+      hits.push({ path, ancestors, label, preview: containerSummary(node as object), leaf: false, value: node });
+    }
+    const childAncestors = [...ancestors, path];
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (hits.length >= SEARCH_LIMIT) return;
+        walk(node[i], `${path}[${i}]`, `[${i}]`, childAncestors);
+      }
+    } else {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (hits.length >= SEARCH_LIMIT) return;
+        walk(v, joinPath(path, k), k, childAncestors);
+      }
+    }
+  };
+  if (root && typeof root === "object" && !Array.isArray(root)) {
+    for (const [k, v] of Object.entries(root as Record<string, unknown>)) {
+      walk(v, joinPath("snapshot", k), k, []);
+    }
+  }
+  return hits;
+}
+
+function SnapshotExplorer({ snapshot, selectedPath, onSelect }: {
+  snapshot: Record<string, unknown>;
+  selectedPath: string;
+  onSelect: (path: string, value: unknown) => void;
+}) {
+  // Explicit expand/collapse decisions; anything not present falls back to
+  // the default (small nested containers open, everything else closed).
+  const [expandState, setExpandState] = useState<Map<string, boolean>>(new Map());
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setExpandState(new Map()); setQuery(""); setDebounced(""); }, [snapshot]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const hits = useMemo(
+    () => (debounced.length >= 2 ? searchSnapshot(snapshot, debounced) : []),
+    [snapshot, debounced],
+  );
+
+  const toggle = useCallback((path: string, next: boolean) => {
+    setExpandState((prev) => { const m = new Map(prev); m.set(path, next); return m; });
+  }, []);
+
+  const reveal = (hit: SearchHit) => {
+    setExpandState((prev) => {
+      const m = new Map(prev);
+      hit.ancestors.forEach((a) => m.set(a, true));
+      if (!hit.leaf) m.set(hit.path, true);
+      return m;
+    });
+    onSelect(hit.path, hit.value);
+    // Best-effort scroll to the revealed row once it has rendered.
+    requestAnimationFrame(() => {
+      const esc = hit.path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      containerRef.current?.querySelector(`[data-path="${esc}"]`)
+        ?.scrollIntoView({ block: "center" });
+    });
+  };
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)}
+             placeholder="Search keys and values (e.g. SDWAN, 192.168., disabled)…"
+             className="mb-2 block w-full bg-base-800 border border-base-500 rounded-lg px-3 py-2 text-[12px] text-ink-100 font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30" />
+      {debounced.length >= 2 && (
+        <div className="mb-2 max-h-[220px] overflow-y-auto rounded-lg border border-base-500 bg-base-900/60">
+          <div className="px-2 py-1 font-mono text-[10px] text-ink-500 border-b border-base-500 sticky top-0 bg-base-900">
+            {hits.length === 0 ? "No matches" :
+              `${hits.length}${hits.length >= SEARCH_LIMIT ? "+" : ""} match${hits.length === 1 ? "" : "es"} — click to select`}
+          </div>
+          {hits.map((h) => (
+            <button key={h.path} onClick={() => reveal(h)}
+                    className="block w-full text-left px-2 py-1 font-mono text-[11px] text-ink-300 hover:bg-accent/10 transition-colors">
+              <span className="text-ink-100">{h.label}</span>
+              <span className="text-ink-500 mx-1">{h.leaf ? "=" : ""}</span>
+              <span className="text-ink-500">{h.preview.slice(0, 48)}</span>
+              <span className="block text-[10px] text-ink-500 truncate">{h.path}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={containerRef} className="max-h-[500px] overflow-y-auto space-y-0.5">
+        {Object.entries(snapshot).map(([k, v]) => (
+          <TreeNode key={k} label={k} data={v} path={joinPath("snapshot", k)} depth={0}
+                    expandState={expandState} toggle={toggle}
+                    onSelect={onSelect} selectedPath={selectedPath} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TreeNode({ label, data, path, depth, expandState, toggle, onSelect, selectedPath }: {
+  label: string; data: unknown; path: string; depth: number;
+  expandState: Map<string, boolean>;
+  toggle: (path: string, next: boolean) => void;
+  onSelect: (path: string, value: unknown) => void;
+  selectedPath: string;
+}) {
+  const [limit, setLimit] = useState(CHUNK);
+  const isSelected = selectedPath === path;
+
+  if (isLeaf(data)) {
     return (
-      <button onClick={() => onSelect(prefix)}
+      <button data-path={path} onClick={() => onSelect(path, data)}
               className={`block w-full text-left font-mono text-[11px] px-2 py-1 rounded hover:bg-accent/10 transition-colors ${
-                selectedPath === prefix ? "bg-accent/20 text-accent" : "text-ink-300"
-              }`}>
-        <span className="text-ink-500">{prefix.split(".").pop()}</span>
+                isSelected ? "bg-accent/20 text-accent" : "text-ink-300"
+              }`} style={{ paddingLeft: depth * 12 + 8 }}>
+        <span className="text-ink-500">{label}</span>
         <span className="text-ink-500 mx-1">=</span>
-        <span className="text-ink-100">{val.slice(0, 60)}</span>
+        <span className="text-ink-100">{leafText(data).slice(0, 60)}</span>
       </button>
     );
   }
 
-  if (Array.isArray(data)) {
-    const hasItems = data.length > 0;
-    return (
-      <details className="pl-2" open={hasItems && data.length <= 10}>
-        <summary className="cursor-pointer font-mono text-[11px] text-ink-300 hover:text-ink-100 py-0.5">
-          <span className="text-ink-500">{prefix.split(".").pop()}</span>
-          <span className="text-ink-500 ml-1">[{data.length}]</span>
-        </summary>
-        {hasItems && data.slice(0, 20).map((item, i) => (
-          typeof item === "object" && item !== null && !Array.isArray(item)
-            ? <SnapshotTree key={i} data={item} onSelect={onSelect} selectedPath={selectedPath} prefix={`${prefix}[${i}]`} />
-            : <SnapshotTree key={i} data={item} onSelect={onSelect} selectedPath={selectedPath} prefix={`${prefix}[${i}]`} />
-        ))}
-        {data.length > 20 && <span className="font-mono text-[10px] text-ink-500 pl-4">…{data.length - 20} more items</span>}
-        {!hasItems && <span className="font-mono text-[10px] text-ink-500 pl-4">empty</span>}
-      </details>
-    );
-  }
+  const entries: [string, unknown][] = Array.isArray(data)
+    ? data.map((v, i) => [`[${i}]`, v] as [string, unknown])
+    : Object.entries(data as Record<string, unknown>);
+  const expanded = expandState.get(path) ?? (depth >= 1 && entries.length > 0 && entries.length <= 10);
+  const isTop = depth === 0;
 
-  // Object
-  const entries = Object.entries(data as Record<string, unknown>);
-  const isTopSection = prefix === "snapshot";
   return (
-    <details className="pl-2" open={isTopSection || entries.length <= 8}>
-      <summary className="cursor-pointer font-mono text-[11px] text-ink-300 hover:text-ink-100 py-0.5">
-        <span className={isTopSection ? "text-accent font-semibold uppercase text-[10px] tracking-wider" : "text-ink-500"}>
-          {prefix.split(".").pop()?.replace(/[[\]']/g, "")}
-        </span>
-        <span className="text-ink-500 ml-1">{"{}"}</span>
-      </summary>
-      {entries.map(([k, v]) => {
-        const childPath = `${prefix}.${k}`;
-        if (typeof v === "object" && v !== null) {
-          return <SnapshotTree key={k} data={v} onSelect={onSelect} selectedPath={selectedPath} prefix={childPath} />;
-        }
-        const val = typeof v === "string" ? `"${v}"` : String(v);
-        const isSelected = selectedPath === childPath;
-        return (
-          <button key={k} onClick={() => onSelect(childPath)}
-                  className={`block w-full text-left font-mono text-[11px] px-2 py-1 rounded hover:bg-accent/10 transition-colors ${
-                    isSelected ? "bg-accent/20 text-accent" : "text-ink-300"
-                  }`}>
-            <span className="text-ink-500">{k}</span>
-            <span className="text-ink-500 mx-1">=</span>
-            <span className="text-ink-100">{val.slice(0, 60)}</span>
-          </button>
-        );
-      })}
-    </details>
+    <div>
+      <div data-path={path}
+           className={`flex items-center gap-1 rounded transition-colors group ${isSelected ? "bg-accent/20" : "hover:bg-accent/5"}`}
+           style={{ paddingLeft: depth * 12 + 2 }}>
+        <button onClick={() => toggle(path, !expanded)}
+                className="flex-1 min-w-0 text-left font-mono text-[11px] py-1 cursor-pointer">
+          <span className="text-ink-500 inline-block w-3">{expanded ? "▾" : "▸"}</span>
+          <span className={isTop ? "text-accent font-semibold uppercase text-[10px] tracking-wider" : "text-ink-300"}>
+            {label}
+          </span>
+          <span className="text-ink-500 ml-1">{containerSummary(data as object)}</span>
+        </button>
+        <button onClick={() => onSelect(path, data)}
+                title="Use this path in a condition (e.g. exists / size checks)"
+                className={`shrink-0 px-1.5 font-mono text-[10px] rounded transition-opacity ${
+                  isSelected ? "text-accent opacity-100" : "text-ink-500 opacity-0 group-hover:opacity-100 hover:text-accent"
+                }`}>
+          ⊕
+        </button>
+      </div>
+      {expanded && (
+        <div>
+          {entries.slice(0, limit).map(([k, v]) => (
+            <TreeNode key={k} label={k} data={v}
+                      path={Array.isArray(data) ? `${path}${k}` : joinPath(path, k)}
+                      depth={depth + 1} expandState={expandState} toggle={toggle}
+                      onSelect={onSelect} selectedPath={selectedPath} />
+          ))}
+          {entries.length > limit && (
+            <button onClick={() => setLimit(limit + CHUNK)}
+                    className="block font-mono text-[10px] text-accent hover:underline px-2 py-1"
+                    style={{ paddingLeft: (depth + 1) * 12 + 8 }}>
+              Show {Math.min(CHUNK, entries.length - limit)} more ({entries.length - limit} remaining)
+            </button>
+          )}
+          {entries.length === 0 && (
+            <span className="block font-mono text-[10px] text-ink-500 px-2 py-0.5"
+                  style={{ paddingLeft: (depth + 1) * 12 + 8 }}>empty</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

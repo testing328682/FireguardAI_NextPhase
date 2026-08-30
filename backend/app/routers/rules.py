@@ -257,6 +257,37 @@ def approve_rule(rule_id: str, body: RuleStateChange, request: Request,
     return rule
 
 
+# Declared before "/rules/{rule_id}/test": route matching is declaration-
+# ordered, so the dynamic route would otherwise capture rule_id="builder".
+@router.post("/rules/builder/test", response_model=RuleTestResponse)
+def test_builder_condition(
+    body: BuilderTestRequest,
+    user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> RuleTestResponse:
+    """Test a hand-written CEL condition against a reference snapshot.
+
+    Resolution order: an inline snapshot, then the referenced analysis, then
+    the caller's saved builder snapshot (so the UI does not need to re-send
+    a multi-megabyte snapshot on every test run).
+    """
+    snapshot = body.snapshot
+    if snapshot is None and body.analysis_id:
+        analysis = db.get(Analysis, body.analysis_id)
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        snapshot = (analysis.result_json or {}).get("snapshot")
+    if snapshot is None:
+        row = db.scalar(select(BuilderSnapshot).where(
+            BuilderSnapshot.user_id == user.id))
+        if row is not None:
+            snapshot = row.snapshot
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="No parsed snapshot available")
+    fired, error = evaluate_condition(body.condition, snapshot)
+    return RuleTestResponse(fired=fired, error=error)
+
+
 @router.post("/rules/{rule_id}/test", response_model=RuleTestResponse)
 def test_rule(rule_id: str, body: RuleTestRequest, user: User = Depends(current_user),
               db: Session = Depends(get_db)) -> RuleTestResponse:
@@ -342,8 +373,12 @@ async def upload_builder_tsr(
 
     _log.info("Parsing uploaded TSR: %s (%d bytes)", file.filename, len(raw))
 
+    from firewallguard.tsr.normalize import normalize_tsr
     from firewallguard.tsr.parser import parse_tsr
     try:
+        # Same pre-step as every ingest path: API-format TSRs are rebuilt
+        # into GUI-equivalent text so the parser sees one shape.
+        text, tsr_format = normalize_tsr(text)
         snapshot = parse_tsr(text, source_name=file.filename)
     except Exception as exc:
         _log.exception("TSR parse failed for %s", file.filename)
@@ -363,6 +398,7 @@ async def upload_builder_tsr(
         "filename": file.filename,
         "snapshot": snapshot,
         "meta": snapshot.get("meta", {}),
+        "tsr_format": tsr_format,
     }
 
 
@@ -397,25 +433,6 @@ def get_builder_snapshot(
     if not snapshot:
         raise HTTPException(status_code=404, detail="No parsed snapshot in this analysis")
     return snapshot
-
-
-@router.post("/rules/builder/test", response_model=RuleTestResponse)
-def test_builder_condition(
-    body: BuilderTestRequest,
-    user: User = Depends(require_superadmin),
-    db: Session = Depends(get_db),
-) -> RuleTestResponse:
-    """Test a hand-written CEL condition against a reference snapshot."""
-    snapshot = body.snapshot
-    if snapshot is None:
-        analysis = db.get(Analysis, body.analysis_id)
-        if analysis is None:
-            raise HTTPException(status_code=404, detail="Analysis not found")
-        snapshot = (analysis.result_json or {}).get("snapshot")
-    if not snapshot:
-        raise HTTPException(status_code=404, detail="No parsed snapshot available")
-    fired, error = evaluate_condition(body.condition, snapshot)
-    return RuleTestResponse(fired=fired, error=error)
 
 
 # ---- suppressions / overrides --------------------------------------------
