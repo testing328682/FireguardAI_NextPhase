@@ -108,12 +108,13 @@ def test_authored_system_rules_generate_findings(client, org_a):
 
 # ---- end to end: the exact reported flow ------------------------------------
 def _run_flow(client, org: dict, tsr_bytes: bytes, filename: str,
-              serial: str, rule_key: str) -> dict:
+              serial: str, rule_key: str, condition: str = SSLVPN_CONDITION,
+              title: str = "BAD SSLVPN CONFIG") -> dict:
     """Superadmin authors a global rule → tenant uploads a TSR → findings."""
     sa_headers = _superadmin_headers(client, org)
     res = client.post("/api/v1/rules", headers=sa_headers, json={
-        "title": "BAD SSLVPN CONFIG", "severity": "Medium", "category": "SSL VPN",
-        "condition": SSLVPN_CONDITION, "source": "system", "key": rule_key,
+        "title": title, "severity": "Medium", "category": "SSL VPN",
+        "condition": condition, "source": "system", "key": rule_key,
         "remediation": "Use a CA-signed certificate."})
     assert res.status_code == 201, res.text
 

@@ -368,6 +368,28 @@ existing CEL path keeps working. Engine version bumped to 0.10.0.
   conditions. The Save card offers the same rule metadata as the Rules page
   creation form — Severity, Category, Remediation (`SEVERITIES` and
   `RULE_CATEGORIES` are shared from `lib/ui.ts`).
+- **Collection-aware conditions.** A selected path that traverses an array
+  defaults to **Any item**: indexes become `[*]` wildcards
+  (`snapshot.access_rules[*].src_zone`), with a "This index only" opt-out.
+  At CEL-generation time, clauses sharing the same wildcard collection are
+  folded into ONE `exists()` — `snapshot.access_rules.exists(x, x.src_zone ==
+  "WAN" && x.dst_zone == "WAN")` — so all conditions bind to the SAME element
+  (never one exists per clause, which could match different elements). Nested
+  wildcards produce nested exists (vars `x`, `y`, `z`). celpy supports the
+  exists macro natively; stored rules remain plain CEL, and existing indexed
+  rules keep working. Caveat: on *heterogeneous* collections (generic
+  `config` items), an exists with no matching element propagates a
+  missing-key error (CEL OR-absorption semantics) — curated collections have
+  uniform keys and are unaffected.
+- **Evaluation-context pruning** (`rule_engine._condition_context`): celpy
+  macro cost grows with activation size, so exists over 443 access rules took
+  ~40 s against the full snapshot (with the multi-MB `config` tree) vs ~2.6 s
+  pruned. Conditions are therefore evaluated against the snapshot pruned to
+  the top-level keys they reference (regex over `snapshot.<ident>` /
+  `snapshot["key"]`; bare `snapshot` or backslash escapes fall back to the
+  full snapshot). Semantics-preserving; applied in `evaluate_condition`,
+  `evaluate_custom_rules`, and `evaluate_authored_system_rules`.
+  Tests: `tests/test_collection_rules.py`.
 - **Tests**: `tests/test_generic_config.py` — synthetic-TSR structure/typing/
   marker-healing/CEL tests plus endpoint tests; reference-TSR tests are gated
   on `FGAI_TSR_DIR` (default `<repo>/TSRs`) and assert every marker-delimited

@@ -52,6 +52,36 @@ def compile_condition(expression: str):
         raise CELError(str(exc)) from exc
 
 
+# Top-level snapshot keys a condition references: ``snapshot.<ident>`` or
+# ``snapshot["<key>"]`` / ``snapshot['<key>']``.
+_SNAPSHOT_KEY_RE = re.compile(
+    r"""snapshot(?:\.(?P<dot>[A-Za-z_][A-Za-z0-9_]*)|\[(?P<q>['"])(?P<key>.*?)(?P=q)\])""")
+# ``snapshot`` used bare (not followed by a member access) — cannot prune.
+_SNAPSHOT_BARE_RE = re.compile(r"snapshot\b(?!\s*[.\[])")
+
+
+def _condition_context(condition: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+    """The snapshot pruned to the top-level keys the condition references.
+
+    celpy's macro evaluation cost grows with the size of the activation, so a
+    collection predicate (``exists``) over the full snapshot — which carries
+    the multi-megabyte ``config`` tree — is ~15x slower than over just the
+    keys the rule reads (measured: 40s vs 2.6s over 443 access rules).
+    Pruning never changes the outcome: a CEL expression can only observe the
+    values it names, and a referenced-but-absent key errors identically in
+    the pruned and the full map. When the expression uses ``snapshot`` bare
+    or contains escapes we cannot parse confidently, the full snapshot is
+    kept.
+    """
+    if "\\" in condition or _SNAPSHOT_BARE_RE.search(condition):
+        return snapshot
+    keys = {m.group("dot") or m.group("key")
+            for m in _SNAPSHOT_KEY_RE.finditer(condition)}
+    if not keys:
+        return snapshot
+    return {k: v for k, v in snapshot.items() if k in keys}
+
+
 def evaluate_condition(expression: str, snapshot: dict[str, Any]) -> tuple[bool | None, str]:
     """Evaluate a CEL expression against a snapshot.
 
@@ -63,7 +93,8 @@ def evaluate_condition(expression: str, snapshot: dict[str, Any]) -> tuple[bool 
     except CELError as exc:
         return None, f"compile error: {exc}"
     try:
-        value = prog.evaluate({"snapshot": celpy.json_to_cel(snapshot)})
+        context = _condition_context(expression, snapshot)
+        value = prog.evaluate({"snapshot": celpy.json_to_cel(context)})
         return bool(value), ""
     except Exception as exc:  # noqa: BLE001 - celpy eval errors
         return None, f"evaluation error: {exc}"
@@ -88,14 +119,15 @@ def evaluate_custom_rules(db: Session, organization_id: str,
         Rule.source == RuleSource.custom,
         Rule.state == RuleState.approved,
         Rule.enabled.is_(True))).all()
-    cel_snapshot = celpy.json_to_cel(snapshot)
     findings: list[Finding] = []
     for rule in rules:
         if not rule.condition:
             continue
         try:
             prog = compile_condition(rule.condition)
-            if bool(prog.evaluate({"snapshot": cel_snapshot})):
+            # Per-rule pruned context: keeps collection predicates fast.
+            context = celpy.json_to_cel(_condition_context(rule.condition, snapshot))
+            if bool(prog.evaluate({"snapshot": context})):
                 findings.append(_finding_from_rule(rule))
         except Exception as exc:  # noqa: BLE001 - one bad rule must not break the scan
             logger.warning("Custom rule %s failed: %s", rule.key, exc)
@@ -133,12 +165,13 @@ def evaluate_authored_system_rules(db: Session, snapshot: dict[str, Any]) -> lis
     authored = [r for r in rows if r.key not in catalog_keys]
     if not authored:
         return []
-    cel_snapshot = celpy.json_to_cel(snapshot)
     findings: list[Finding] = []
     for rule in authored:
         try:
             prog = compile_condition(rule.condition)
-            fired = bool(prog.evaluate({"snapshot": cel_snapshot}))
+            # Per-rule pruned context: keeps collection predicates fast.
+            context = celpy.json_to_cel(_condition_context(rule.condition, snapshot))
+            fired = bool(prog.evaluate({"snapshot": context}))
             logger.debug("Global rule %s (%r): fired=%s", rule.key, rule.title, fired)
             if fired:
                 findings.append(_finding_from_rule(rule, "Matched global rule condition."))

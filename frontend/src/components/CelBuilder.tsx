@@ -61,6 +61,12 @@ export function CelBuilder({ user }: { user: User }) {
   const [selOp, setSelOp] = useState("==");
   const [selVal, setSelVal] = useState("");
   const [selNegate, setSelNegate] = useState(false);
+  // Paths that traverse an array default to matching ANY element — indexes
+  // shift between TSRs and scans — but the user may pin the clicked index.
+  const [selAnyItem, setSelAnyItem] = useState(true);
+  const selHasIndex = /\[\d+\]/.test(selPath);
+  const effectiveSelPath =
+    selHasIndex && selAnyItem ? selPath.replace(/\[\d+\]/g, "[*]") : selPath;
 
   // Test
   const [testResult, setTestResult] = useState<RuleTestResult | null>(null);
@@ -125,41 +131,20 @@ export function CelBuilder({ user }: { user: User }) {
     }
   }
 
-  // Build CEL expression
+  // Build CEL expression. Clauses whose paths contain a collection wildcard
+  // ([*]) and share the same collection are folded into ONE exists() so all
+  // of their conditions are evaluated against the SAME element.
   const celExpression = useMemo(() => {
     if (clauses.length === 0) return "";
-    const quote = (v: string) =>
-      looksNumeric(v) || v === "true" || v === "false" ? v : `"${v}"`;
-
-    const parts = clauses.map((c) => {
-      let expr = "";
-      const op = c.operator;
-
-      if (op === "exists") {
-        expr = `size(${c.path}) > 0`;
-      } else if (op === "!exists") {
-        expr = `size(${c.path}) == 0`;
-      } else if (op === "true") {
-        expr = `${c.path} == true`;
-      } else if (op === "false") {
-        expr = `${c.path} == false`;
-      } else if (op === "contains") {
-        expr = `${c.path}.contains(${quote(c.value)})`;
-      } else {
-        expr = `${c.path} ${op} ${quote(c.value)}`;
-      }
-
-      if (c.negate) expr = `!(${expr})`;
-      return expr;
-    });
-    const junctionOp = junction === "and" ? "&&" : "||";
-    return parts.join(` ${junctionOp} `);
+    const joiner = junction === "and" ? " && " : " || ";
+    return buildCelParts(clauses.map((c) => ({ c, path: c.path })), junction, 0).join(joiner);
   }, [clauses, junction]);
 
   // Select a path from the explorer: prefill operator/value from the actual
   // TSR value so "equals current value" conditions are one click away.
   function handleSelectPath(path: string, value: unknown) {
     setSelPath(path);
+    setSelAnyItem(true);
     if (typeof value === "boolean") {
       setSelOp(value ? "true" : "false");
       setSelVal("");
@@ -178,9 +163,9 @@ export function CelBuilder({ user }: { user: User }) {
     if (op.needsValue && !selVal.trim()) return;
     setClauses([...clauses, {
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36),
-      path: selPath, operator: selOp, value: selVal, negate: selNegate,
+      path: effectiveSelPath, operator: selOp, value: selVal, negate: selNegate,
     }]);
-    setSelPath(""); setSelVal(""); setSelNegate(false); setSelOp("==");
+    setSelPath(""); setSelVal(""); setSelNegate(false); setSelOp("=="); setSelAnyItem(true);
   }
 
   function removeClause(id: string) {
@@ -283,8 +268,28 @@ export function CelBuilder({ user }: { user: User }) {
                 <div className="space-y-3">
                   <div>
                     <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Path</span>
-                    <pre className="mt-1 bg-base-900 border border-base-500 rounded-lg px-3 py-2 font-mono text-[12px] text-accent">{selPath}</pre>
+                    <pre className="mt-1 bg-base-900 border border-base-500 rounded-lg px-3 py-2 font-mono text-[12px] text-accent">{effectiveSelPath}</pre>
                   </div>
+                  {selHasIndex && (
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Collection match</span>
+                      <div className="mt-1 flex items-center gap-2">
+                        <button onClick={() => setSelAnyItem(true)}
+                                className={`px-3 py-1 rounded-lg text-[12px] font-mono transition-all ${selAnyItem ? "bg-accent/20 text-accent border border-accent/40" : "text-ink-500 border border-base-500"}`}>
+                          Any item (recommended)
+                        </button>
+                        <button onClick={() => setSelAnyItem(false)}
+                                className={`px-3 py-1 rounded-lg text-[12px] font-mono transition-all ${!selAnyItem ? "bg-accent/20 text-accent border border-accent/40" : "text-ink-500 border border-base-500"}`}>
+                          This index only
+                        </button>
+                      </div>
+                      <p className="mt-1.5 font-mono text-[10px] text-ink-500">
+                        Any item matches regardless of position — collection order can change
+                        between TSRs. Conditions added on the same collection must match a
+                        single item.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex gap-3 flex-wrap">
                     <label className="block">
                       <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Operator</span>
@@ -350,6 +355,12 @@ export function CelBuilder({ user }: { user: User }) {
                     </li>
                   ))}
                 </ul>
+              )}
+              {clauses.some((c) => c.path.includes("[*]")) && (
+                <p className="font-mono text-[10px] text-ink-500">
+                  Clauses with [*] on the same collection are combined into a single
+                  exists() — they must all match the same item.
+                </p>
               )}
             </div>
 
@@ -660,4 +671,53 @@ function TreeNode({ label, data, path, depth, expandState, toggle, onSelect, sel
 // ── Helpers ────────────────────────────────────────────────────────────
 function looksNumeric(s: string): boolean {
   return /^-?\d+(\.\d+)?$/.test(s.trim());
+}
+
+// ── CEL generation with collection wildcards ──────────────────────────
+// A clause path may contain "[*]" where an array index would be. Clauses
+// sharing the same collection prefix fold into a single
+// `collection.exists(x, cond1 && cond2 ...)`, so every condition binds to
+// the SAME element (never one exists() per condition, which could match
+// different elements). Nested wildcards produce nested exists().
+const EXISTS_VARS = ["x", "y", "z"];
+const varFor = (depth: number) => EXISTS_VARS[depth] ?? `v${depth}`;
+
+function clauseExpr(c: ConditionClause, path: string): string {
+  const quote = (v: string) =>
+    looksNumeric(v) || v === "true" || v === "false" ? v : `"${v}"`;
+  let expr: string;
+  const op = c.operator;
+  if (op === "exists") expr = `size(${path}) > 0`;
+  else if (op === "!exists") expr = `size(${path}) == 0`;
+  else if (op === "true") expr = `${path} == true`;
+  else if (op === "false") expr = `${path} == false`;
+  else if (op === "contains") expr = `${path}.contains(${quote(c.value)})`;
+  else expr = `${path} ${op} ${quote(c.value)}`;
+  return c.negate ? `!(${expr})` : expr;
+}
+
+function buildCelParts(items: { c: ConditionClause; path: string }[],
+                       junction: Junction, depth: number): string[] {
+  const joiner = junction === "and" ? " && " : " || ";
+  const parts: string[] = [];
+  const groups = new Map<string, { c: ConditionClause; path: string }[]>();
+  for (const it of items) {
+    const star = it.path.indexOf("[*]");
+    if (star === -1) {
+      parts.push(clauseExpr(it.c, it.path));
+      continue;
+    }
+    const prefix = it.path.slice(0, star);
+    const rest = it.path.slice(star + 3);
+    const group = groups.get(prefix);
+    if (group) group.push({ c: it.c, path: rest });
+    else groups.set(prefix, [{ c: it.c, path: rest }]);
+  }
+  for (const [prefix, subs] of groups) {
+    const v = varFor(depth);
+    const inner = buildCelParts(
+      subs.map((s) => ({ c: s.c, path: v + s.path })), junction, depth + 1);
+    parts.push(`${prefix}.exists(${v}, ${inner.join(joiner)})`);
+  }
+  return parts;
 }
