@@ -231,7 +231,8 @@ def run_analysis_inline(analysis_id: str) -> None:
                 result["findings"].append(fw_finding.to_dict())
                 result["finding_count"] = len(result["findings"])
                 sev = result["score"]["severity_counts"]
-                sev["Critical"] = sev.get("Critical", 0) + 1
+                # The rule's severity is configurable in Product Config.
+                sev[fw_finding.severity] = sev.get(fw_finding.severity, 0) + 1
         except Exception:
             logger.warning("Firmware compliance check failed; continuing", exc_info=True)
 

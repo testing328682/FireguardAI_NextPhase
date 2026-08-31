@@ -787,6 +787,8 @@ class DeviceGeneration(Base):
         back_populates="generation", cascade="all, delete-orphan")
     firmware: Mapped[list["FirmwareRecommendation"]] = relationship(
         back_populates="generation", cascade="all, delete-orphan")
+    firmware_versions: Mapped[list["FirmwareVersion"]] = relationship(
+        back_populates="generation", cascade="all, delete-orphan")
 
 
 class GenerationDevice(Base):
@@ -800,11 +802,74 @@ class GenerationDevice(Base):
 
 
 class FirmwareRecommendation(Base):
-    """Recommended firmware version for a generation."""
+    """Per-generation firmware compliance configuration.
+
+    Holds the latest recommended version plus the metadata of the finding the
+    compliance check generates. Defaults reproduce the historical hardcoded
+    finding, so pre-existing rows keep behaving identically.
+    """
     __tablename__ = "firmware_recommendations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     generation_id: Mapped[str] = mapped_column(
         ForeignKey("device_generations.id"), unique=True, index=True)
     version: Mapped[str] = mapped_column(String(64), default="")
+    rule_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    rule_key: Mapped[str] = mapped_column(String(64), default="FW-FIRMWARE-COMPLIANCE")
+    rule_title: Mapped[str] = mapped_column(String(512), default="")
+    rule_description: Mapped[str] = mapped_column(Text, default="")
+    rule_severity: Mapped[str] = mapped_column(String(16), default="Critical")
+    rule_category: Mapped[str] = mapped_column(String(128), default="Firmware Compliance")
+    rule_remediation: Mapped[str] = mapped_column(Text, default="")
 
     generation: Mapped[DeviceGeneration] = relationship(back_populates="firmware")
+
+
+class FirmwareVersion(Base):
+    """A known (previous) firmware release of a generation, carrying the
+    configured intelligence (CVEs, known issues, remediation)."""
+    __tablename__ = "firmware_versions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    generation_id: Mapped[str] = mapped_column(
+        ForeignKey("device_generations.id"), index=True)
+    version: Mapped[str] = mapped_column(String(64))           # display form
+    version_norm: Mapped[str] = mapped_column(String(64), index=True)  # match key
+    remediation: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    generation: Mapped[DeviceGeneration] = relationship(back_populates="firmware_versions")
+    cves: Mapped[list["FirmwareCve"]] = relationship(
+        back_populates="firmware_version", cascade="all, delete-orphan")
+    issues: Mapped[list["FirmwareIssue"]] = relationship(
+        back_populates="firmware_version", cascade="all, delete-orphan")
+
+
+class FirmwareCve(Base):
+    """A CVE associated with a firmware version. ``extra`` holds future
+    metadata (advisory links, fixed-in versions, ...) without schema churn."""
+    __tablename__ = "firmware_cves"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    firmware_version_id: Mapped[str] = mapped_column(
+        ForeignKey("firmware_versions.id"), index=True)
+    cve_id: Mapped[str] = mapped_column(String(32))
+    description: Mapped[str] = mapped_column(Text, default="")
+    cvss: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    remediation: Mapped[str] = mapped_column(Text, default="")
+    extra: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    firmware_version: Mapped[FirmwareVersion] = relationship(back_populates="cves")
+
+
+class FirmwareIssue(Base):
+    """A known bug / issue associated with a firmware version."""
+    __tablename__ = "firmware_issues"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    firmware_version_id: Mapped[str] = mapped_column(
+        ForeignKey("firmware_versions.id"), index=True)
+    title: Mapped[str] = mapped_column(String(512))
+    description: Mapped[str] = mapped_column(Text, default="")
+    severity: Mapped[str] = mapped_column(String(16), default="")
+    remediation: Mapped[str] = mapped_column(Text, default="")
+
+    firmware_version: Mapped[FirmwareVersion] = relationship(back_populates="issues")

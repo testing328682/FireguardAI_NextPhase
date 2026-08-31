@@ -104,6 +104,7 @@ def parse_administration(doc: TSRDocument) -> Dict[str, Any]:
         "lockout_enabled": _to_bool(kv.get("Enable User Lockout On Login Failure", "")),
         "http_port": _to_int(kv.get("HTTP Management Port", "")),
         "https_port": _to_int(kv.get("HTTPS Management Port", "")),
+        "ssh_port": _to_int(kv.get("SSH Port", "")),
         "https_cert_name": kv.get("Https Cert Name", ""),
         "http_mgmt_interfaces": _split_ifaces(kv.get("HTTP Management Allowed On Interfaces", "")),
         "https_mgmt_interfaces": _split_ifaces(kv.get("HTTPS Management Allowed On Interfaces", "")),

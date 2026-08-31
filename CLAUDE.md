@@ -39,6 +39,9 @@ backend/
     rules/catalog.py      # Core detection rules (~25)
     rules/catalog_parity.py  # Parity rules: per-object ACR/AOB/SVC/NAT/IPSEC/FW/AUTH/PERF (~32)
     rules/catalog_info.py # Informational inventory checks (~10)
+    rules/semantic.py     # Semantic rule layer: SnapshotIndex, recursive cycle-safe
+                          #   address resolution, SEMANTIC_TARGETS registry,
+                          #   evaluate_management_definition (Management Rules)
     intelligence/firmware.py  # PSIRT advisory matching, version comparison
     intelligence/data/psirt.json  # Real advisory data from SonicWall PSIRT portal
     intelligence/correlation.py   # Attack path correlation
@@ -55,7 +58,7 @@ backend/
     mfa.py                # TOTP (stdlib RFC 6238) + bcrypt-hashed backup codes
     crypto.py             # Fernet encryption for stored secrets (Phase 2)
     sonicos.py            # SonicOS REST client for API-pull devices (Phase 2)
-    rule_engine.py        # CEL evaluator, _SYSTEM_RULE_CEL defaults, evaluate_system_rule_filters(), evaluate_authored_system_rules() (generative global rules), check_firmware_compliance(), seed_system_rules(), rule_api_support()/api_unsupported_system_keys() (API-TSR support)
+    rule_engine.py        # CEL evaluator, _SYSTEM_RULE_CEL defaults, evaluate_system_rule_filters(), evaluate_authored_system_rules() (generative global CEL rules), evaluate_management_rules() (semantic Management Rules), check_firmware_compliance(), seed_system_rules(), rule_api_support()/api_unsupported_system_keys() (API-TSR support)
     sso.py                # OIDC (JWKS-verified) + SAML SSO; role mapping (Phase 3)
     ticketing.py          # Jira/ServiceNow create + bidirectional status sync (Phase 3)
     billing.py            # Stripe + plan-limit enforcement + trial workflow + org visibility endpoint (Phase 3)
@@ -123,6 +126,8 @@ frontend/                 # React 18 + TypeScript + Vite + Tailwind
     ProductConfig.tsx     # Device generations, model mappings, firmware
     CelBuilder.tsx        # Visual CEL rule builder; lazy searchable explorer
                           #   over the complete TSR snapshot (snapshot.config)
+    ManagementRules.tsx   # Semantic management-exposure rules (structured
+                          #   conditions, address-reference resolution)
     Profile.tsx           # User profile settings
     Organization.tsx      # Org settings, billing, branding, SSO
     Compliance.tsx        # Per-framework compliance matrices
@@ -410,6 +415,161 @@ existing CEL path keeps working. Engine version bumped to 0.10.0.
   Tests: `tests/test_global_rules.py` (unit + end-to-end via TSR upload +
   file-gated acceptance test on the reference TSR).
 
+## Management Rules (semantic rule layer)
+
+Server Admin → Rule Builder is a parent nav item with subpages **CEL Rule
+Builder** (`#/builder/cel`) and **Management Rules** (`#/builder/management`);
+`#/builder` redirects to the CEL subpage, and `NavItem.children` in `App.tsx`
+makes further Rule Builder subpages trivial to add.
+
+Management Rules detect management-exposure patterns that CEL cannot express:
+conditions like `Destination matches All Interface IPs` resolve the access
+rule's **address reference** through the TSR before comparing.
+
+- **Engine** `firewallguard/rules/semantic.py` (DB-agnostic):
+  `SnapshotIndex` builds one-time name indexes (address objects and groups in
+  SEPARATE maps — SonicWall allows an object and a group with the same name;
+  a reference that exists as both resolves to the deterministic union) plus
+  interface IPs (dynamic from the TSR, 0.0.0.0 skipped).
+  `resolve_address_name` recursively resolves objects/groups (nested groups,
+  visited-set cycle protection, per-index memoization) into typed values:
+  HOST → /32, NETWORK → `net - mask` or CIDR via `ipaddress` (real subnet
+  membership, never string comparison), RANGE → start–end, FQDN/MAC kept for
+  future targets. `SEMANTIC_TARGETS` is a registry (`any`,
+  `all_interface_ips`, `interface_ip:<name>`) — new semantic conditions are
+  new registry entries, never evaluator special cases.
+  `evaluate_management_definition(definition, snapshot)` returns one match
+  per access rule satisfying ALL conditions (same-rule binding); disabled
+  access rules are skipped unless the definition constrains `enabled`;
+  hits are de-duplicated for deterministic findings.
+- **Semantic targets are domain-tagged** (`address` / `service`), and
+  `SEMANTIC_FIELDS` maps each field to its resolver domain:
+  `src_address`/`dst_address` → address, `service_ports` → service. Targets:
+  `any`, `all_interface_ips`, `interface_ip:<name>`,
+  `ip_address:<ips>` (Specific IP — the reference must resolve to a
+  host/subnet/range containing one of the IPs), `all_management_ports`,
+  and `custom_ports:<ports>` (service domain). **Multi-value targets use OR
+  semantics** (`semantic.split_values` on comma/space/semicolon): a
+  condition is satisfied as soon as ANY configured IP/port intersects the
+  resolved set — never all-must-match. Services resolve like addresses: `resolve_service_name`
+  walks service objects/groups (nested, cycle-safe, memoized; same-name
+  object+group unioned), parsing `iptype` + `ports` (`80~80`, `8000 - 9000`,
+  `443`) into protocol/port ranges; management ports come dynamically from
+  `administration.http_port/https_port/ssh_port` (parser now reads
+  `SSH Port`; reference TSR proves the point with HTTPS on 50554). Port
+  matching requires TCP (or unknown protocol) and uses range containment —
+  never name or string comparison.
+- **Zone wildcard**: the value `*` in an `equals`/`not_equals` condition on
+  any direct string field is a wildcard (Any), never a literal — `equals *`
+  matches everything, `not_equals *` nothing. The UI offers a "＊ Any" chip
+  on zone fields.
+- **Operators.** Direct string fields: equals / not_equals / contains /
+  not_contains; boolean fields: equals / not_equals only. Resolved
+  (semantic) fields support `is` (ANY-match: some resolved value satisfies
+  the target — the default; legacy ""/equals normalize to it) and `is_not`
+  (NONE-match: the reference must resolve to concrete values — not "Any",
+  not an unknown name — and none may satisfy the target; "any value
+  differs" semantics are deliberately not offered). Operators always apply
+  AFTER reference resolution, never to the raw object name.
+- **Score aggregation invariant**: a device that has been analyzed and
+  scored 0 is a valid data point — both the live overall
+  (`executive_summary`) and the trend (`_score_by_day`) include it; only
+  never-analyzed devices (grade "" / no completed analysis) are excluded.
+  Dashboard's Security Score Trend and Security Analytics' sparkline both
+  read `score_trend` from `/analytics/executive-summary` (single source).
+  Findings identity: management-rule findings use `Rule <num>: <name>` as
+  `object_name` because SonicWall rule names repeat; `sync_findings`
+  refuses same-fingerprint duplicates within a batch and auto-resolves
+  shadowed duplicate-identity rows.
+- **Storage**: rows in the existing `rules` table with `kind="management"`
+  and a structured `definition` JSON (`{match: "access_rules", conditions:
+  [{field, operator, value, target}]}`); `condition` stays empty so the CEL
+  evaluators ignore them. Global system rules (org NULL, approved), metadata
+  (title/severity/category/description/remediation) reused — findings inherit
+  it automatically. Migration `n2o3p4q5r6s7` adds `rules.kind` +
+  `rules.definition` (manual ALTERs listed below for stale volumes).
+- **Evaluation**: `rule_engine.evaluate_management_rules()` runs inside
+  `make_pipeline_hooks.extra_findings_fn` for every analysis path; one
+  per-object Finding per matching access rule (`object_type="Access Rule"`),
+  evidence lists the rule header, the resolution trail, and matched
+  interfaces (`Matched interface X1 (10.10.10.1) via 10.10.10.0/24 from
+  object 'WAN Range'`).
+- **API** (superadmin; declared BEFORE `/rules/{rule_id}` — declaration-order
+  matters): `GET/POST /rules/management`, `PUT/DELETE
+  /rules/management/{id}`, `POST /rules/management/test` (evaluates a
+  definition against the caller's saved builder snapshot),
+  `GET /rules/management/options` (field/operator/target vocabulary that
+  drives the UI dropdowns).
+- **Frontend** `ManagementRules.tsx`: rule list (severity chips, enable
+  toggle, edit/delete) + structured condition editor (no CEL required) +
+  metadata fields (shared `SEVERITIES`/`RULE_CATEGORIES`) + "Test against
+  reference TSR".
+- **Tests** `tests/test_management_rules.py`: resolver (nested groups,
+  circular references, object/group same-name union, subnet/range semantics,
+  string-prefix trap), evaluator (same-rule binding, dedup, multiple
+  matches, disabled-rule gate), finding metadata inheritance, CRUD +
+  validation + permissions, end-to-end TSR upload → finding, and a gated
+  reference-TSR acceptance check (real group chain to a live WAN interface).
+
+## Product Config firmware intelligence
+
+Product Config (`#/config`, superadmin) is the firmware intelligence system:
+generation → models → latest recommended firmware → **compliance-rule
+metadata** → **previous firmware versions** with structured **CVEs** and
+**known issues**.
+
+- **Models** (`app/models.py`): `FirmwareRecommendation` (1:1 per generation)
+  now carries the compliance-rule config — `rule_enabled`, `rule_key`,
+  `rule_title`, `rule_description`, `rule_severity`, `rule_category`,
+  `rule_remediation`; defaults reproduce the historical hardcoded finding, so
+  existing rows behave identically. New normalized tables:
+  `FirmwareVersion` (per generation, `version` display + `version_norm`
+  match key, remediation) → `FirmwareCve[]` (cve_id, description, optional
+  cvss, remediation, `extra` JSON for future metadata) → `FirmwareIssue[]`
+  (title, description, optional severity, remediation). Migration
+  `o3p4q5r6s7t8` (+ manual ALTERs above for stale volumes; the new tables
+  come from `create_all`).
+- **Version matching** (`rule_engine.normalize_firmware_version` /
+  `firmware_matches`): strips SonicOS branding, casefolds, and treats a
+  token-boundary prefix as the same release (`7.3.0-7012` ↔
+  `7.3.0-7012-R8150`; never `7.3.0-701` ↔ `7.3.0-7012`). Used for BOTH the
+  latest-compliance comparison (release-granularity exact match — a build
+  suffix no longer breaks compliance) and the historical lookup. A newer
+  firmware than the recommendation is still flagged (recommendation is the
+  pinned target, unchanged semantics).
+- **Evaluation** (`rule_engine.check_firmware_compliance`, called from
+  `tasks.run_analysis_inline`): model → generation (ilike, shortest first) →
+  rule disabled? → release-match compliant? → ONE finding built from the
+  configured metadata (empty fields fall back to legacy texts; rule_id =
+  configured key, so the fingerprint/lifecycle follows it), then the
+  DETECTED version is looked up in `firmware_versions` and its CVEs/issues/
+  remediation are attached as evidence. Distinguishes "No known CVEs or
+  issues are configured" (record exists, empty) from "No firmware
+  intelligence is configured for version X — this does not indicate the
+  absence of known vulnerabilities" (no record). Findings snapshot the
+  intelligence at analysis time — later Product Config edits never rewrite
+  historical findings. `tasks.py` increments the finding's actual severity
+  bucket (severity is configurable).
+- **API** (`routers/platform_config.py`, superadmin): extended
+  `PUT /platform/generations/{id}/firmware` (partial: version + rule fields;
+  validates severity, rule-key format, collision with rule-library keys, and
+  latest↔previous conflicts with clear 409s — no silent data loss);
+  `GET/POST /platform/generations/{id}/firmware-versions`,
+  `PATCH/DELETE /platform/firmware-versions/{id}`,
+  `POST /platform/firmware-versions/{id}/cves` + `DELETE /platform/firmware-cves/{id}`
+  (CVE-ID regex, dup check, CVSS 0-10 optional),
+  `POST .../issues` + `DELETE /platform/firmware-issues/{id}` (title
+  required, optional severity). Firmware rule keys may be shared across
+  generations (the default is), matching the existing convention.
+- **Frontend** `ProductConfig.tsx`: per-generation collapsible "Firmware
+  Compliance Rule" editor (latest version + metadata + enable toggle) and
+  "Previous Firmware Versions" list with expandable per-version detail
+  (remediation, CVE add/delete, issue add/delete).
+- **Tests**: `tests/test_firmware_intelligence.py` (matching semantics,
+  legacy behavior, disable, metadata-driven finding, intelligence attach,
+  unknown-version wording, API validation, e2e upload + re-analysis dedupe +
+  snapshot immutability).
+
 ## Configurable API flow (API TSR Parser Config)
 
 The SonicOS API workflow is fully editable from the Server Admin portal — no code
@@ -626,6 +786,15 @@ State as of 1 July 2026:
   ALTER TABLE devices ADD COLUMN IF NOT EXISTS hidden_severities JSONB DEFAULT '[]'::jsonb;
   ALTER TABLE devices ADD COLUMN IF NOT EXISTS analyze_mode VARCHAR(16) DEFAULT 'manual' NOT NULL;
   ALTER TYPE schedulefrequency ADD VALUE IF NOT EXISTS 'hourly';
+  ALTER TABLE rules ADD COLUMN IF NOT EXISTS kind VARCHAR(16) DEFAULT 'cel' NOT NULL;
+  ALTER TABLE rules ADD COLUMN IF NOT EXISTS definition JSONB;
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_key VARCHAR(64) NOT NULL DEFAULT 'FW-FIRMWARE-COMPLIANCE';
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_title VARCHAR(512) NOT NULL DEFAULT '';
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_description TEXT NOT NULL DEFAULT '';
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_severity VARCHAR(16) NOT NULL DEFAULT 'Critical';
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_category VARCHAR(128) NOT NULL DEFAULT 'Firmware Compliance';
+  ALTER TABLE firmware_recommendations ADD COLUMN IF NOT EXISTS rule_remediation TEXT NOT NULL DEFAULT '';
   ```
 - **Findings counts.** Devices page fetches live counts from findings table.
   Findings page only counts active-status findings (open/acknowledged/in_progress).

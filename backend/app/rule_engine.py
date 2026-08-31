@@ -942,12 +942,52 @@ def seed_system_rules(db: Session) -> int:
     return created
 
 
+# ---------------------------------------------------------------------------
+# Firmware compliance + configured firmware intelligence (Product Config).
+# ---------------------------------------------------------------------------
+def normalize_firmware_version(version: str) -> str:
+    """Comparison key for a firmware version string.
+
+    Strips SonicOS branding prefixes (the parser already stores device
+    firmware stripped, but configured values may include them), collapses
+    whitespace and casefolds. Build metadata stays part of the key — release
+    tolerance is handled by ``firmware_matches``.
+    """
+    v = re.sub(r"^SonicOS\s*(?:Enhanced\s*)?", "", (version or "").strip(),
+               flags=re.IGNORECASE)
+    return re.sub(r"\s+", "", v).casefold()
+
+
+def firmware_matches(left: str, right: str) -> bool:
+    """True when two firmware strings identify the same release.
+
+    Exact normalized equality, or one is a token-boundary prefix of the other
+    (``7.3.0-7012`` matches ``7.3.0-7012-R8150`` — the same release with build
+    metadata — but ``7.3.0-701`` never matches ``7.3.0-7012``).
+    """
+    a, b = normalize_firmware_version(left), normalize_firmware_version(right)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    shorter, longer = (a, b) if len(a) < len(b) else (b, a)
+    return longer.startswith(shorter) and longer[len(shorter)] == "-"
+
+
 def check_firmware_compliance(db: Session, device_model: str,
                               device_firmware: str) -> Finding | None:
-    """Look up the device generation and recommended firmware, and return a
-    Critical finding if the installed firmware is older than / different from
-    the configured recommendation.  Returns None when no config exists or the
-    firmware is compliant."""
+    """Compare the device firmware with the generation's recommended firmware
+    and return the configured compliance finding when it differs, enriched
+    with the firmware intelligence (CVEs / known issues / remediation)
+    configured in Product Config for the *detected* version.
+
+    Finding metadata (rule key, title, severity, category, description,
+    remediation, enabled flag) comes from the generation's configuration;
+    empty fields fall back to the historical built-in texts. Returns None
+    when no config exists, the rule is disabled, or the firmware matches the
+    recommendation (token-boundary release match — build suffixes such as
+    ``-R8150`` do not break compliance).
+    """
     if not device_model or not device_firmware:
         return None
 
@@ -964,30 +1004,94 @@ def check_firmware_compliance(db: Session, device_model: str,
     if not gen or not gen.firmware:
         return None
 
-    recommended = gen.firmware[0].version.strip()
+    rec = gen.firmware[0]
+    recommended = rec.version.strip()
     if not recommended:
         return None
+    if not rec.rule_enabled:
+        return None  # rule disabled by the platform administrator
 
     current = device_firmware.strip()
-    if current == recommended:
+    if firmware_matches(current, recommended):
         return None  # up to date
 
+    # ── Configured intelligence for the DETECTED firmware version ─────────
+    fw_record = next(
+        (fv for fv in gen.firmware_versions if firmware_matches(current, fv.version)),
+        None)
+
+    evidence = [
+        f"Device Model: {device_model}",
+        f"Generation: {gen.name}",
+        f"Current Firmware: {current}",
+        f"Recommended Firmware: {recommended}",
+        "Firmware Status: Outdated",
+    ]
+    intel_remediation = ""
+    if fw_record is None:
+        # Unknown ≠ safe: say that no intelligence is configured, never that
+        # there are no vulnerabilities.
+        evidence.append(
+            f"No firmware intelligence is configured for version {current} — "
+            "this does not indicate the absence of known vulnerabilities.")
+    else:
+        intel_remediation = (fw_record.remediation or "").strip()
+        if not fw_record.cves and not fw_record.issues:
+            evidence.append(
+                f"No known CVEs or issues are configured for firmware "
+                f"{fw_record.version}.")
+        if fw_record.cves:
+            evidence.append(
+                f"Known Vulnerabilities for {fw_record.version} "
+                f"({len(fw_record.cves)} configured):")
+            for cve in fw_record.cves:
+                line = f"  {cve.cve_id}"
+                if cve.cvss is not None:
+                    line += f" (CVSS {cve.cvss:g})"
+                if cve.description:
+                    line += f": {cve.description}"
+                evidence.append(line)
+                if cve.remediation:
+                    evidence.append(f"    Remediation: {cve.remediation}")
+        if fw_record.issues:
+            evidence.append(
+                f"Known Issues for {fw_record.version} "
+                f"({len(fw_record.issues)} configured):")
+            for issue in fw_record.issues:
+                line = f"  {issue.title}"
+                if issue.severity:
+                    line += f" [{issue.severity}]"
+                if issue.description:
+                    line += f": {issue.description}"
+                evidence.append(line)
+                if issue.remediation:
+                    evidence.append(f"    Remediation: {issue.remediation}")
+        if intel_remediation:
+            evidence.append(f"Recommended Action: {intel_remediation}")
+
+    # ── Finding metadata from Product Config, with legacy fallbacks ───────
+    title = (rec.rule_title or "").strip() or \
+        f"Device running outdated firmware ({gen.name})"
+    description = (rec.rule_description or "").strip() or (
+        f"The device model {device_model} ({gen.name}) is running "
+        f"firmware {current}, but the platform administrator recommends "
+        f"{recommended}.")
+    if fw_record is not None and (fw_record.cves or fw_record.issues):
+        description += (
+            f" Firmware {fw_record.version} has {len(fw_record.cves)} known "
+            f"CVE(s) and {len(fw_record.issues)} known issue(s) configured "
+            "in the firmware intelligence database (see evidence).")
+    remediation = (rec.rule_remediation or "").strip() or intel_remediation or (
+        f"Upgrade the device to firmware version {recommended} or later. "
+        f"Refer to the SonicWall upgrade guide for {device_model}.")
+
     return Finding(
-        rule_id="FW-FIRMWARE-COMPLIANCE",
-        title=f"Device running outdated firmware ({gen.name})",
-        severity="Critical",
-        category="Firmware Compliance",
-        description=(
-            f"The device model {device_model} ({gen.name}) is running "
-            f"firmware {current}, but the platform administrator recommends "
-            f"{recommended}."
-        ),
-        evidence=[
-            f"Device Model: {device_model}",
-            f"Generation: {gen.name}",
-            f"Current Firmware: {current}",
-            f"Recommended Firmware: {recommended}",
-        ],
+        rule_id=(rec.rule_key or "").strip() or "FW-FIRMWARE-COMPLIANCE",
+        title=title,
+        severity=(rec.rule_severity or "").strip() or "Critical",
+        category=(rec.rule_category or "").strip() or "Firmware Compliance",
+        description=description,
+        evidence=evidence,
         business_impact=(
             "Outdated firmware may expose the device to known vulnerabilities "
             "that have been patched in the recommended release."
@@ -996,10 +1100,7 @@ def check_firmware_compliance(db: Session, device_model: str,
             f"Firmware {current} is behind the administrator-configured "
             f"recommendation of {recommended} for {gen.name} devices."
         ),
-        remediation=(
-            f"Upgrade the device to firmware version {recommended} or later. "
-            f"Refer to the SonicWall upgrade guide for {device_model}."
-        ),
+        remediation=remediation,
         verification=[
             f"Confirm firmware version is {recommended} or later after upgrade",
             "Re-run the analysis to verify the finding is resolved",

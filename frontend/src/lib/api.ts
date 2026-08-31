@@ -7,6 +7,14 @@
 import type {
   Analysis,
   AnalysisSummary,
+  FirmwareCveOut,
+  FirmwareIssueOut,
+  FirmwareRule,
+  FirmwareVersionOut,
+  ManagementCondition,
+  ManagementRule,
+  ManagementRuleOptions,
+  ManagementTestResult,
   PlanData,
   CustomerPlanInfo,
   DeviceGeneration,
@@ -377,6 +385,28 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ analysis_id: analysisId || "", condition, snapshot: snapshot || null }),
     }),
+  // ---- management rules (superadmin) ----
+  listManagementRules: () =>
+    json<ManagementRule[]>("/rules/management"),
+  managementRuleOptions: () =>
+    json<ManagementRuleOptions>("/rules/management/options"),
+  createManagementRule: (body: Omit<ManagementRule, "id" | "updated_at">) =>
+    json<ManagementRule>("/rules/management", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  updateManagementRule: (id: string, body: Omit<ManagementRule, "id" | "updated_at">) =>
+    json<ManagementRule>(`/rules/management/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteManagementRule: (id: string) =>
+    json<void>(`/rules/management/${id}`, { method: "DELETE" }),
+  testManagementRule: (conditions: ManagementCondition[]) =>
+    json<ManagementTestResult>("/rules/management/test", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conditions }),
+    }),
   listSuppressions: (ruleKey?: string) =>
     json<Suppression[]>(`/rule-suppressions${ruleKey ? `?rule_key=${encodeURIComponent(ruleKey)}` : ""}`),
   createSuppression: (body: {
@@ -585,6 +615,35 @@ export const api = {
     json<{ generation_id: string; version: string }>(`/platform/generations/${genId}/firmware`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version }),
     }),
+  updateFirmwareConfig: (genId: string, body: Record<string, unknown>) =>
+    json<{ generation_id: string; version: string; firmware_rule: FirmwareRule }>(
+      `/platform/generations/${genId}/firmware`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }),
+  listFirmwareVersions: (genId: string) =>
+    json<FirmwareVersionOut[]>(`/platform/generations/${genId}/firmware-versions`),
+  addFirmwareVersion: (genId: string, body: { version: string; remediation?: string }) =>
+    json<FirmwareVersionOut>(`/platform/generations/${genId}/firmware-versions`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  updateFirmwareVersion: (id: string, body: { version?: string; remediation?: string }) =>
+    json<FirmwareVersionOut>(`/platform/firmware-versions/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  deleteFirmwareVersion: (id: string) =>
+    raw(`/platform/firmware-versions/${id}`, { method: "DELETE" }).then(() => undefined),
+  addFirmwareCve: (fvId: string, body: { cve_id: string; description?: string; cvss?: number | string | null; remediation?: string }) =>
+    json<FirmwareCveOut>(`/platform/firmware-versions/${fvId}/cves`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  deleteFirmwareCve: (id: string) =>
+    raw(`/platform/firmware-cves/${id}`, { method: "DELETE" }).then(() => undefined),
+  addFirmwareIssue: (fvId: string, body: { title: string; description?: string; severity?: string; remediation?: string }) =>
+    json<FirmwareIssueOut>(`/platform/firmware-versions/${fvId}/issues`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  deleteFirmwareIssue: (id: string) =>
+    raw(`/platform/firmware-issues/${id}`, { method: "DELETE" }).then(() => undefined),
   checkout: (plan: string) =>
     json<{ url: string | null; mode: string; message: string }>("/billing/checkout", {
       method: "POST",

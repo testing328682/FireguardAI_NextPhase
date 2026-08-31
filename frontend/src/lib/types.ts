@@ -200,13 +200,122 @@ export interface BuilderSnapshotRef {
   generated_at: string | null;
 }
 
+// ---- Management Rules (semantic, reference-resolving) ------------------
+export interface ManagementCondition {
+  field: string;
+  operator: string;   // direct fields: equals | not_equals | contains
+  value: string;      // comparison value / semantic target parameter
+  target: string;     // semantic fields: any | all_interface_ips | interface_ip
+}
+
+export interface ManagementRule {
+  id: string;
+  key: string;
+  title: string;
+  severity: string;
+  category: string;
+  description: string;
+  remediation: string;
+  enabled: boolean;
+  conditions: ManagementCondition[];
+  updated_at: string | null;
+}
+
+export interface ManagementTarget {
+  key: string;
+  label: string;
+  needs_value: boolean;
+  value_hint: string;
+  domains: string[];   // "address" | "service"
+}
+
+export interface ManagementRuleOptions {
+  direct_fields: string[];
+  bool_fields: string[];
+  semantic_fields: string[];
+  semantic_field_domains: Record<string, string>;
+  operators: string[];
+  bool_operators: string[];
+  semantic_operators: string[];   // "is" (any match) | "is_not" (none match)
+  wildcard: string;    // "*" — Any in equals conditions
+  targets: ManagementTarget[];
+}
+
+export interface ManagementHit {
+  kind: string;        // interface | ip | service_port
+  summary: string;
+  label: string;
+  interface: string;
+  ip: string;
+  port: number | null;
+  protocol: string;
+  via: string;
+  source: string;
+}
+
+export interface ManagementTestMatch {
+  num: number | null;
+  name: string;
+  src_zone: string;
+  dst_zone: string;
+  service: string;
+  src: string;
+  dst: string;
+  hits: ManagementHit[];
+  evidence: string[];
+}
+
+export interface ManagementTestResult {
+  matches: ManagementTestMatch[];
+  access_rules_evaluated: number;
+  error: string;
+}
+
 // ---- Product & Platform Config -------------------------------------------
+export interface FirmwareRule {
+  enabled: boolean;
+  key: string;
+  title: string;
+  description: string;
+  severity: string;
+  category: string;
+  remediation: string;
+}
+
+export interface FirmwareCveOut {
+  id: string;
+  cve_id: string;
+  description: string;
+  cvss: number | null;
+  remediation: string;
+}
+
+export interface FirmwareIssueOut {
+  id: string;
+  title: string;
+  description: string;
+  severity: string;
+  remediation: string;
+}
+
+export interface FirmwareVersionOut {
+  id: string;
+  version: string;
+  remediation: string;
+  cve_count: number;
+  issue_count: number;
+  cves?: FirmwareCveOut[];
+  issues?: FirmwareIssueOut[];
+}
+
 export interface DeviceGeneration {
   id: string;
   name: string;
   sort_order: number;
   devices: { id: string; model: string }[];
   firmware_version: string;
+  firmware_rule?: FirmwareRule;
+  firmware_versions?: FirmwareVersionOut[];
 }
 
 export interface Suppression {
@@ -539,6 +648,7 @@ export interface DeviceStatusBreakdown {
 export interface ExecutiveSummary {
   overall_score: number;
   overall_grade: string;
+  scored_devices: number;
   score_delta: number;
   score_trend: TrendPoint[];
   critical_count: number;
