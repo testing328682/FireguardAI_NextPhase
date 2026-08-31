@@ -102,10 +102,25 @@ def sync_findings(db, analysis: Analysis) -> dict[str, Any]:
     existing = db.scalars(select(Finding).where(
         Finding.device_id == analysis.device_id)).all()
     by_fp: dict[str, Finding] = {}
-    for f in existing:
+    resolved = 0
+    for f in sorted(existing,
+                    key=lambda r: ((r.last_seen_at or r.first_seen_at or now), r.id)):
         if f.source == "manual":
             continue
+        shadowed = by_fp.get(f.fingerprint)
         by_fp[f.fingerprint] = f
+        if shadowed is not None and shadowed.status in _ACTIVE:
+            # Two rows sharing one identity are an artifact (historically
+            # possible when several objects collapsed to the same
+            # fingerprint). Keep the newest row; resolve the shadowed one so
+            # it cannot linger open forever outside reconciliation.
+            prev_status = shadowed.status.value
+            shadowed.status = FindingStatus.fixed
+            shadowed.resolved_at = now
+            db.add(_system_comment(shadowed, analysis.organization_id,
+                                   "Duplicate finding identity superseded by a newer record; auto-resolved.",
+                                   from_status=prev_status, to_status="fixed"))
+            resolved += 1
 
     seen: set[str] = set()
     new_critical: list[Finding] = []
@@ -113,6 +128,10 @@ def sync_findings(db, analysis: Analysis) -> dict[str, Any]:
 
     for d in incoming:
         fp = fingerprint(d.get("rule_id", ""), d.get("object_type", ""), d.get("object_name", ""))
+        if fp in seen:
+            # Two findings in one analysis collapsing to the same identity
+            # must not insert duplicate rows — the first occurrence wins.
+            continue
         seen.add(fp)
         content = _content_from_dict(d)
         prior = by_fp.get(fp)
@@ -152,7 +171,6 @@ def sync_findings(db, analysis: Analysis) -> dict[str, Any]:
 
     # Findings that disappeared from the scan: auto-resolve active ones.
     # Manual findings are never auto-resolved.
-    resolved = 0
     for fp, f in by_fp.items():
         if fp in seen:
             continue

@@ -732,7 +732,7 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
             title="Overall Security Score"
             icon={<IconShield />}
             primaryValue={
-              deviceSummary.overall_score > 0
+              deviceSummary.overall_grade
                 ? <><AnimatedValue value={`${deviceSummary.overall_score}`} /><span className="text-ink-500 text-lg font-normal">/100</span></>
                 : "No Data"
             }

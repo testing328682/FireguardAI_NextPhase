@@ -1638,7 +1638,7 @@ export function SecurityAnalytics({ onSubtitle }: { onSubtitle?: (s: string | nu
             title="Overall Security Score"
             icon={<IconShield />}
             primaryValue={
-              summary.overall_score > 0
+              summary.overall_grade
                 ? <><AnimatedValue value={`${summary.overall_score}`} /><span className="text-ink-500 text-lg font-normal">/100</span></>
                 : "No Data"
             }

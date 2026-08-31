@@ -279,7 +279,10 @@ def _score_by_day(db, org_id: str, device_ids: list[str] | None,
                     latest = score
                 else:
                     break
-            if latest is not None and latest > 0:
+            # A device with no analysis yet (None) is excluded; a device whose
+            # latest analysis scored 0 is a legitimate value and MUST count —
+            # the trend's newest point has to agree with the live overall.
+            if latest is not None:
                 scores.append(latest)
         val = round(sum(scores) / len(scores), 1) if scores else 0.0
         result.append({"date": d.strftime("%Y-%m-%d"), "value": val})
@@ -424,9 +427,13 @@ def executive_summary(
     protection_trend = _protected_by_day(db, org_id, org, device_ids, days, tz_offset)
 
     # ── Cards (current/live state) ──────────────────────────────────────
-    current_scores = [d.latest_score for d in configured if d.latest_score > 0]
+    # A device that has been analyzed carries a non-empty grade; its score is
+    # a valid value even when it is 0 (a 0% device MUST drag the average
+    # down). Never use the score value itself to decide inclusion — only
+    # never-analyzed devices (grade "") are excluded.
+    current_scores = [d.latest_score for d in configured if d.latest_grade]
     overall_score = round(sum(current_scores) / len(current_scores), 1) if current_scores else 0.0
-    overall_grade = _score_to_grade(overall_score)
+    overall_grade = _score_to_grade(overall_score) if current_scores else ""
 
     def _count_active(severity: str) -> int:
         q = select(func.count(Finding.id)).where(
@@ -488,6 +495,9 @@ def executive_summary(
     return {
         "overall_score": overall_score,
         "overall_grade": overall_grade,
+        # Devices included in the overall average (analyzed at least once).
+        # Lets the UI distinguish "no scored devices" from a genuine 0 score.
+        "scored_devices": len(current_scores),
         "score_delta": score_delta,
         "score_trend": score_trend,
         "critical_count": critical_count,
