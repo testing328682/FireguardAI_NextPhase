@@ -24,6 +24,8 @@ from ..schemas import (
     RuleOut, RuleDetail, RuleCreate, RuleUpdate, RuleStateChange,
     RuleTestRequest, RuleTestResponse, SuppressionCreate, SuppressionOut,
     BuilderSnapshotRef, BuilderTestRequest,
+    ManagementRuleBody, ManagementRuleOut, ManagementTestRequest,
+    ManagementTestResponse,
 )
 from ..security import current_user, require_role, require_superadmin
 from ..rule_engine import (
@@ -83,6 +85,169 @@ def list_rules(source: Optional[RuleSource] = None,
         like = f"%{q}%"
         stmt = stmt.where(Rule.title.ilike(like) | Rule.key.ilike(like))
     return [_annotate(r) for r in db.scalars(stmt.order_by(Rule.key))]
+
+
+# ---- management rules (superadmin, semantic reference-resolving) ----------
+# Declared before "/rules/{rule_id}": route matching is declaration-ordered,
+# so the dynamic route would otherwise capture rule_id="management".
+
+def _management_out(rule: Rule) -> dict:
+    return {
+        "id": rule.id, "key": rule.key, "title": rule.title,
+        "severity": rule.severity, "category": rule.category,
+        "description": rule.description, "remediation": rule.remediation,
+        "enabled": rule.enabled,
+        "conditions": (rule.definition or {}).get("conditions", []),
+        "updated_at": rule.updated_at,
+    }
+
+
+def _management_definition(body_conditions) -> dict:
+    from firewallguard.rules.semantic import validate_definition
+    definition = {"match": "access_rules",
+                  "conditions": [c.model_dump() for c in body_conditions]}
+    errors = validate_definition(definition)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="; ".join(errors))
+    return definition
+
+
+@router.get("/rules/management", response_model=list[ManagementRuleOut])
+def list_management_rules(user: User = Depends(require_superadmin),
+                          db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.scalars(select(Rule).where(
+        Rule.kind == "management", Rule.organization_id.is_(None))
+        .order_by(Rule.key)).all()
+    return [_management_out(r) for r in rows]
+
+
+@router.get("/rules/management/options")
+def management_rule_options(user: User = Depends(require_superadmin)) -> dict:
+    """Field/operator/target vocabulary so the UI stays in sync with the engine."""
+    from firewallguard.rules import semantic
+    return {
+        "direct_fields": sorted(semantic.DIRECT_FIELDS),
+        "bool_fields": sorted(semantic.BOOL_FIELDS),
+        "semantic_fields": sorted(semantic.SEMANTIC_FIELDS),
+        "semantic_field_domains": {
+            fld: domain for fld, (_key, domain) in semantic.SEMANTIC_FIELDS.items()},
+        "operators": list(semantic.DIRECT_OPERATORS),
+        "bool_operators": list(semantic.BOOL_OPERATORS),
+        "semantic_operators": list(semantic.SEMANTIC_OPERATORS),
+        "wildcard": semantic.WILDCARD,
+        "targets": [
+            {"key": t.key, "label": t.label, "needs_value": t.needs_value,
+             "value_hint": t.value_hint, "domains": sorted(t.domains)}
+            for t in semantic.SEMANTIC_TARGETS.values()],
+    }
+
+
+@router.post("/rules/management", response_model=ManagementRuleOut,
+             status_code=status.HTTP_201_CREATED)
+def create_management_rule(body: ManagementRuleBody, request: Request,
+                           user: User = Depends(require_superadmin),
+                           db: Session = Depends(get_db)) -> dict:
+    key = (body.key or "").strip()
+    if not key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="A rule key (e.g. MGMT-RULE-001) is required")
+    if db.scalar(select(Rule).where(Rule.key == key, Rule.organization_id.is_(None))):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"System rule key '{key}' already exists")
+    definition = _management_definition(body.conditions)
+    rule = Rule(
+        organization_id=None, key=key, title=body.title, category=body.category,
+        severity=body.severity, description=body.description,
+        condition="", remediation=body.remediation, compliance={}, references=[],
+        source=RuleSource.system, state=RuleState.approved, enabled=body.enabled,
+        kind="management", definition=definition, current_version=1,
+        created_by=user.id)
+    db.add(rule)
+    db.flush()
+    _record_version(db, rule, user, "Created (management)")
+    db.commit()
+    db.refresh(rule)
+    audit.log_action(db, organization_id=user.organization_id, action=audit.RULE_CREATED,
+                     resource_type="rule", resource_id=rule.id, user=user, request=request,
+                     after={"key": rule.key, "title": rule.title, "kind": "management"})
+    return _management_out(rule)
+
+
+@router.put("/rules/management/{rule_id}", response_model=ManagementRuleOut)
+def update_management_rule(rule_id: str, body: ManagementRuleBody, request: Request,
+                           user: User = Depends(require_superadmin),
+                           db: Session = Depends(get_db)) -> dict:
+    rule = db.get(Rule, rule_id)
+    if rule is None or rule.kind != "management":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Management rule not found")
+    rule.title = body.title
+    rule.severity = body.severity
+    rule.category = body.category
+    rule.description = body.description
+    rule.remediation = body.remediation
+    rule.enabled = body.enabled
+    rule.definition = _management_definition(body.conditions)
+    rule.current_version += 1
+    _record_version(db, rule, user, "Updated (management)")
+    db.commit()
+    db.refresh(rule)
+    audit.log_action(db, organization_id=user.organization_id, action=audit.RULE_UPDATED,
+                     resource_type="rule", resource_id=rule.id, user=user, request=request,
+                     after={"key": rule.key, "title": rule.title, "kind": "management"})
+    return _management_out(rule)
+
+
+@router.delete("/rules/management/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_management_rule(rule_id: str, request: Request,
+                           user: User = Depends(require_superadmin),
+                           db: Session = Depends(get_db)) -> Response:
+    rule = db.get(Rule, rule_id)
+    if rule is None or rule.kind != "management":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Management rule not found")
+    audit.log_action(db, organization_id=user.organization_id, action=audit.RULE_DELETED,
+                     resource_type="rule", resource_id=rule.id, user=user, request=request,
+                     before={"key": rule.key, "title": rule.title, "kind": "management"})
+    db.delete(rule)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/rules/management/test", response_model=ManagementTestResponse)
+def test_management_rule(body: ManagementTestRequest,
+                         user: User = Depends(require_superadmin),
+                         db: Session = Depends(get_db)) -> ManagementTestResponse:
+    """Evaluate a management definition against the caller's saved builder TSR."""
+    row = db.scalar(select(BuilderSnapshot).where(BuilderSnapshot.user_id == user.id))
+    if row is None or not row.snapshot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="No reference TSR snapshot — upload one in the CEL Rule Builder first")
+    definition = _management_definition(body.conditions)
+    from firewallguard.rules.semantic import evaluate_management_definition
+    try:
+        matches = evaluate_management_definition(definition, row.snapshot)
+    except Exception as exc:  # noqa: BLE001 - report, never 500
+        return ManagementTestResponse(matches=[], access_rules_evaluated=0,
+                                      error=f"evaluation error: {exc}")
+    out = []
+    for m in matches:
+        r = m.rule
+        out.append({
+            "num": r.get("num"), "name": str(r.get("name") or ""),
+            "src_zone": str(r.get("src_zone") or ""), "dst_zone": str(r.get("dst_zone") or ""),
+            "service": str(r.get("service") or ""), "src": str(r.get("src") or ""),
+            "dst": str(r.get("dst") or ""),
+            "hits": [{"kind": h.kind, "summary": h.summary(), "label": h.label,
+                      "interface": h.interface, "ip": h.ip, "port": h.port,
+                      "protocol": h.protocol, "via": h.via, "source": h.source}
+                     for h in m.hits],
+            "evidence": m.evidence,
+        })
+    return ManagementTestResponse(
+        matches=out,
+        access_rules_evaluated=len(row.snapshot.get("access_rules") or []))
 
 
 @router.get("/rules/{rule_id}", response_model=RuleDetail)

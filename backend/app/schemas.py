@@ -720,6 +720,75 @@ class BuilderTestRequest(BaseModel):
     condition: str = Field(min_length=1)
 
 
+# ---- management rules (semantic, reference-resolving) ----------------------
+class ManagementCondition(BaseModel):
+    """One structured condition of a Management Rule."""
+    field: str
+    operator: str = "equals"     # direct fields: equals | not_equals | contains
+    value: str = ""              # comparison value / semantic target parameter
+    target: str = ""             # semantic fields: any | all_interface_ips | interface_ip
+
+
+class ManagementRuleBody(BaseModel):
+    """Create/update payload for a Management Rule (superadmin)."""
+    key: str = ""                                  # required on create
+    title: str = Field(min_length=1)
+    severity: str = "Medium"
+    category: str = "Firewall Management"
+    description: str = ""
+    remediation: str = ""
+    enabled: bool = True
+    conditions: list[ManagementCondition] = Field(min_length=1)
+
+
+class ManagementRuleOut(BaseModel):
+    id: str
+    key: str
+    title: str
+    severity: str
+    category: str
+    description: str
+    remediation: str
+    enabled: bool
+    conditions: list[ManagementCondition]
+    updated_at: Optional[datetime] = None
+
+
+class ManagementTestRequest(BaseModel):
+    conditions: list[ManagementCondition] = Field(min_length=1)
+
+
+class ManagementHit(BaseModel):
+    """One concrete match produced by a semantic condition."""
+    kind: str = "interface"        # interface | ip | service_port
+    summary: str = ""
+    label: str = ""
+    interface: str = ""
+    ip: str = ""
+    port: Optional[int] = None
+    protocol: str = ""
+    via: str = ""
+    source: str = ""
+
+
+class ManagementTestMatch(BaseModel):
+    num: Optional[int] = None
+    name: str = ""
+    src_zone: str = ""
+    dst_zone: str = ""
+    service: str = ""
+    src: str = ""
+    dst: str = ""
+    hits: list[ManagementHit] = []
+    evidence: list[str] = []
+
+
+class ManagementTestResponse(BaseModel):
+    matches: list[ManagementTestMatch]
+    access_rules_evaluated: int
+    error: str = ""
+
+
 # ---- rule suppressions / overrides ---------------------------------------
 class SuppressionCreate(BaseModel):
     rule_key: str

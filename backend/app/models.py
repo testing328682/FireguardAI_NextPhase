@@ -527,6 +527,11 @@ class Rule(Base):
     source: Mapped[RuleSource] = mapped_column(Enum(RuleSource), default=RuleSource.custom)
     state: Mapped[RuleState] = mapped_column(Enum(RuleState), default=RuleState.draft)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Rule kind: "cel" rules evaluate ``condition`` as a CEL expression;
+    # "management" rules carry a structured semantic ``definition`` evaluated
+    # by firewallguard.rules.semantic (reference-resolving access-rule checks).
+    kind: Mapped[str] = mapped_column(String(16), default="cel", nullable=False)
+    definition: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     approved_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)

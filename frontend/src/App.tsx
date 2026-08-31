@@ -19,6 +19,7 @@ import { CustomerDetailView } from "./components/CustomerDetail";
 import { Organization } from "./components/Organization";
 import { Trends } from "./components/Trends";
 import { CelBuilder } from "./components/CelBuilder";
+import { ManagementRules } from "./components/ManagementRules";
 import { ProductConfig } from "./components/ProductConfig";
 import { Platform } from "./components/Platform";
 import { TsrTester } from "./components/TsrTester";
@@ -34,7 +35,10 @@ import { toggleTheme, getTheme } from "./lib/theme";
 import demoAnalysis from "./demo-analysis.json";
 
 type Mode = "loading" | "login" | "app" | "demo";
-interface NavItem { path: string; label: string; icon: IconName; mspOnly?: boolean }
+// A NavItem may carry children (subpages) — the parent renders as a section
+// header that navigates to its first child, with the children indented below.
+interface NavChild { path: string; label: string }
+interface NavItem { path: string; label: string; icon: IconName; mspOnly?: boolean; children?: NavChild[] }
 interface NavGroup { title: string; items: NavItem[] }
 
 const NAV_GROUPS: NavGroup[] = [
@@ -75,6 +79,8 @@ const TITLES: Record<string, string> = {
   "/customers/": "Customer", "/findings": "Findings", "/security-analytics": "Security Analytics", "/rules": "Detection Rules",
   "/compliance": "Compliance", "/integrations": "Integrations", "/platform": "Platform Operations",
   "/plans": "Plan Management", "/tsr-tester": "TSR Analysis Tester",
+  "/builder": "Rule Builder", "/builder/cel": "CEL Rule Builder",
+  "/builder/management": "Management Rules",
   "/api-config": "API TSR Parser Config",
   "/page-control": "Page Control",
   "/settings/profile": "Settings", "/settings/organization": "Settings", "/settings/api-tokens": "Settings",
@@ -185,7 +191,10 @@ export default function App() {
           { path: "/platform", label: "Platform", icon: "platform" },
           { path: "/plans", label: "Plans", icon: "integrations" },
           { path: "/rules", label: "Rules", icon: "rules" },
-          { path: "/builder", label: "Rule Builder", icon: "rules" },
+          { path: "/builder", label: "Rule Builder", icon: "rules", children: [
+            { path: "/builder/cel", label: "CEL Rule Builder" },
+            { path: "/builder/management", label: "Management Rules" },
+          ]},
           { path: "/tsr-tester", label: "TSR Tester", icon: "devices" },
           { path: "/api-config", label: "API TSR Parser Config", icon: "integrations" },
           { path: "/page-control", label: "Page Control", icon: "platform" },
@@ -274,17 +283,35 @@ function SidebarNav({ groups, route, onNavigate }:
                 const IconCmp = Icon[it.icon];
                 const active = route === it.path || route.startsWith(it.path + "/") ||
                   (it.path === "/rules" && route.startsWith("/rules"));
+                // Parent items with children navigate to their first subpage.
+                const target = it.children?.length ? it.children[0].path : it.path;
                 return (
-                  <button key={it.path} onClick={() => onNavigate(it.path)}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-all duration-200 relative ${
-                            active
-                              ? "bg-accent/10 text-accent font-semibold shadow-[inset_0_0_0_1px_rgba(79,140,255,0.2)]"
-                              : "text-ink-300 hover:bg-base-700/60 hover:text-ink-100"
-                          }`}>
-                    {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent shadow-[0_0_6px_rgba(79,140,255,0.5)]" />}
-                    <span className={active ? "text-accent" : "text-ink-500"}><IconCmp /></span>
-                    {it.label}
-                  </button>
+                  <div key={it.path}>
+                    <button onClick={() => onNavigate(target)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-all duration-200 relative ${
+                              active
+                                ? "bg-accent/10 text-accent font-semibold shadow-[inset_0_0_0_1px_rgba(79,140,255,0.2)]"
+                                : "text-ink-300 hover:bg-base-700/60 hover:text-ink-100"
+                            }`}>
+                      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent shadow-[0_0_6px_rgba(79,140,255,0.5)]" />}
+                      <span className={active ? "text-accent" : "text-ink-500"}><IconCmp /></span>
+                      {it.label}
+                    </button>
+                    {it.children?.map((child) => {
+                      const childActive = route === child.path || route.startsWith(child.path + "/");
+                      return (
+                        <button key={child.path} onClick={() => onNavigate(child.path)}
+                                className={`w-full flex items-center gap-2 pl-11 pr-3 py-1.5 rounded-lg text-[12px] transition-all duration-200 relative ${
+                                  childActive
+                                    ? "text-accent font-semibold"
+                                    : "text-ink-500 hover:text-ink-100"
+                                }`}>
+                          {childActive && <span className="absolute left-6 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />}
+                          {child.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>
@@ -419,7 +446,9 @@ function Routed({ route, user, customers, onUserChange, onSubtitle, onAnalysis }
   if (path === "/advanced-dashboard") return <AdvancedDashboard />;
   if (path === "/platform") return <Platform />;
   if (path === "/plans") return <PlanManager />;
-  if (path === "/builder") return <CelBuilder user={user} />;
+  if (path === "/builder") return <Navigate to="/builder/cel" />;
+  if (path === "/builder/cel") return <CelBuilder user={user} />;
+  if (path === "/builder/management") return user?.is_superadmin ? <ManagementRules /> : <Dashboard />;
   if (path === "/tsr-tester") return user?.is_superadmin ? <TsrTester /> : <Dashboard />;
   if (path === "/api-config") return user?.is_superadmin ? <ApiFlowConfigPage /> : <Dashboard />;
   if (path === "/page-control") return user?.is_superadmin ? <PageControl /> : <Dashboard />;

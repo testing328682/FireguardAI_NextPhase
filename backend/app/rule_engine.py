@@ -183,6 +183,63 @@ def evaluate_authored_system_rules(db: Session, snapshot: dict[str, Any]) -> lis
     return findings
 
 
+def evaluate_management_rules(db: Session, snapshot: dict[str, Any]) -> list[Finding]:
+    """Evaluate operator-authored Management Rules (kind="management").
+
+    These are global system rules whose ``definition`` holds structured,
+    reference-resolving conditions over access rules (see
+    ``firewallguard.rules.semantic``). One finding is emitted per matching
+    access rule; metadata (title/severity/category/description/remediation)
+    is inherited from the rule row.
+    """
+    rows = db.scalars(select(Rule).where(
+        Rule.source == RuleSource.system,
+        Rule.organization_id.is_(None),
+        Rule.state == RuleState.approved,
+        Rule.enabled.is_(True),
+        Rule.kind == "management")).all()
+    if not rows:
+        return []
+    from firewallguard.rules.semantic import SnapshotIndex, evaluate_management_definition
+    index = SnapshotIndex(snapshot)   # shared indexes/caches for all rules
+    findings: list[Finding] = []
+    for rule in rows:
+        try:
+            matches = evaluate_management_definition(rule.definition or {}, snapshot, index)
+        except Exception as exc:  # noqa: BLE001 - one bad rule must not break the scan
+            logger.warning("Management rule %s failed: %s", rule.key, exc)
+            continue
+        logger.debug("Management rule %s (%r): %d matching access rule(s)",
+                     rule.key, rule.title, len(matches))
+        for m in matches:
+            ar = m.rule
+            # object_name drives the finding fingerprint (rule + object), and
+            # SonicWall access-rule names are not unique — dozens of rules can
+            # be called "Default Access Rule". Qualify with the rule number so
+            # every matching access rule keeps its own finding identity.
+            num, ar_name = ar.get("num"), str(ar.get("name") or "").strip()
+            if num is not None:
+                name = f"Rule {num}: {ar_name}" if ar_name else f"Rule {num}"
+            else:
+                name = ar_name or "Access Rule"
+            findings.append(Finding(
+                rule_id=rule.key, title=rule.title, severity=rule.severity,
+                category=rule.category or "Firewall Management",
+                description=rule.description,
+                evidence=m.evidence,
+                business_impact="", technical_impact="",
+                remediation=rule.remediation or "Review the access rule and restrict it appropriately.",
+                verification=[], risk_reduction="Medium",
+                references=rule.references or [], compliance=rule.compliance or {},
+                object_name=str(name), object_type="Access Rule",
+                object_detail=m.evidence[0] if m.evidence else "",
+                affected_count=1))
+    if findings:
+        logger.info("Management rules fired: %s",
+                    ", ".join(sorted({f.rule_id for f in findings})))
+    return findings
+
+
 def resolve_suppressions(db: Session, organization_id: str,
                          device_id: str | None) -> list[dict]:
     """Active (non-expired) suppressions for a tenant, scoped to a device or tenant-wide."""
@@ -246,10 +303,12 @@ def make_pipeline_hooks(db: Session, organization_id: str, device_id: str | None
     suppressions = resolve_suppressions(db, organization_id, device_id)
 
     def extra_findings_fn(snapshot: dict[str, Any]) -> list[Finding]:
-        # Tenant custom rules plus operator-authored global rules; both are
-        # generative CEL rules and both flow through suppressions + scoring.
+        # Tenant custom CEL rules, operator-authored global CEL rules, and
+        # operator-authored Management Rules (semantic, reference-resolving).
+        # All flow through suppressions + scoring like catalog findings.
         return (evaluate_custom_rules(db, organization_id, snapshot)
-                + evaluate_authored_system_rules(db, snapshot))
+                + evaluate_authored_system_rules(db, snapshot)
+                + evaluate_management_rules(db, snapshot))
 
     def system_filter_fn(snapshot: dict[str, Any]) -> set[str]:
         # System rule CEL filters are opt-in via a feature flag.
