@@ -485,7 +485,7 @@ export function FindingsBySeverityWidget({
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="font-display text-xl font-bold text-ink-100 leading-none">{total}</span>
-                <span className="font-mono text-[9px] text-ink-500 leading-none mt-0.5">Total Findings</span>
+                <span className="font-mono text-[9px] text-ink-500 leading-none mt-0.5">Open Findings</span>
               </div>
             </div>
           </div>

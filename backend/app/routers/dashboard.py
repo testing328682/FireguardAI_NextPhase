@@ -25,6 +25,8 @@ from ..security import current_user
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 
+# "Open" = active statuses (open / acknowledged / in_progress) — the same
+# definition used by the analytics severity distribution and funnels.
 ACTIVE_STATUSES = (FindingStatus.open, FindingStatus.acknowledged, FindingStatus.in_progress)
 DEFAULT_FRAMEWORKS = ("CIS", "NIST", "PCI", "ISO 27001", "SonicWall BP")
 

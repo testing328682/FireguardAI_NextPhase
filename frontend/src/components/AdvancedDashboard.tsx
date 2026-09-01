@@ -585,15 +585,14 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
   const total = charts?.total_findings || 0;
   const segments = Object.entries(dist)
     .filter(([sev, b]) => b.count > 0)
-    .map(([sev, b]) => ({ name: sev, value: b.count, color: SEV_COLORS[sev] || "#7a879b" }));
-  const totalForPct = segments.reduce((s, x) => s + x.value, 0) || 1;
+    .map(([sev, b]) => ({ name: sev, value: b.count, pct: b.pct, color: SEV_COLORS[sev] || "#7a879b" }));
 
   return (
     <div className="relative bg-base-800/70 border border-base-500/30 rounded-xl p-4 flex flex-col gap-2.5 h-full">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="text-[13px] font-semibold text-ink-100">Findings by Severity</span>
-          <span className="text-ink-700 text-xs cursor-help" title="Active findings by severity">ⓘ</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Open (active-status) findings by severity">ⓘ</span>
         </div>
       </div>
 
@@ -616,7 +615,7 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
-              <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
+              <span className="text-ink-600 text-[9px] mt-0.5">Open Findings</span>
             </div>
           </div>
 
@@ -627,7 +626,7 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
                 <span className="text-ink-400 truncate">{s.name}</span>
                 <span className="ml-auto text-ink-300 tabular-nums shrink-0">
-                  {s.value} ({Math.round((s.value / totalForPct) * 100)}%)
+                  {s.value} ({s.pct}%)
                 </span>
               </div>
             ))}
@@ -648,9 +647,9 @@ function FindingsBySeverityCard({ charts }: { charts: DashboardCharts | null }) 
 function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
   const dist = charts?.status_distribution || {};
   const rows = [
-    { key: "open", label: "Open", color: "#ff4d4d", count: dist.open?.count || 0 },
-    { key: "in_progress", label: "In Progress", color: "#ff8a3d", count: dist.in_progress?.count || 0 },
-    { key: "fixed", label: "Fixed", color: "#39d98a", count: dist.fixed?.count || 0 },
+    { key: "open", label: "Open", color: "#ff4d4d", count: dist.open?.count || 0, pct: dist.open?.pct ?? 0 },
+    { key: "in_progress", label: "In Progress", color: "#ff8a3d", count: dist.in_progress?.count || 0, pct: dist.in_progress?.pct ?? 0 },
+    { key: "fixed", label: "Fixed", color: "#39d98a", count: dist.fixed?.count || 0, pct: dist.fixed?.pct ?? 0 },
   ];
   const segments = rows.filter((r) => r.count > 0);
   const total = rows.reduce((s, r) => s + r.count, 0) || 1;
@@ -660,7 +659,7 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="text-[13px] font-semibold text-ink-100">Open vs Fixed</span>
-          <span className="text-ink-700 text-xs cursor-help" title="Finding status distribution">ⓘ</span>
+          <span className="text-ink-700 text-xs cursor-help" title="Lifecycle status: Open + In Progress + Fixed (Suppressed excluded)">ⓘ</span>
         </div>
       </div>
 
@@ -682,7 +681,7 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
             </PieChart>
             <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="font-display text-[20px] font-bold leading-none tabular-nums text-ink-100">{total}</span>
-              <span className="text-ink-600 text-[9px] mt-0.5">Total</span>
+              <span className="text-ink-600 text-[9px] mt-0.5">Total Findings</span>
             </div>
           </div>
 
@@ -692,7 +691,7 @@ function OpenVsFixedCard({ charts }: { charts: DashboardCharts | null }) {
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: r.color }} />
                 <span className="text-ink-400 truncate">{r.label}</span>
                 <span className="ml-auto text-ink-300 tabular-nums shrink-0">
-                  {r.count} ({Math.round((r.count / total) * 100)}%)
+                  {r.count} ({r.pct}%)
                 </span>
               </div>
             ))}
@@ -1207,10 +1206,17 @@ export function AdvancedDashboard() {
 
   // ── Derived metrics ──────────────────────────────────────────────────
   const openFindings = useMemo(() => {
+    // "Open Findings" = active-status findings (open / acknowledged /
+    // in_progress) across ALL severities — the same population as the
+    // "Findings by Severity" and "Open vs Fixed" widgets (dashboard-charts
+    // endpoint). The risk-trend series tracks only Critical/High/Medium/Low
+    // (Info is intentionally excluded there), so it must not drive this KPI.
+    if (charts) return charts.total_findings || 0;
+    // Fallback while charts are still loading: last-day trend sum.
     if (!riskTrend?.trend?.length) return 0;
     const last = riskTrend.trend[riskTrend.trend.length - 1];
     return (last.Critical||0)+(last.High||0)+(last.Medium||0)+(last.Low||0);
-  }, [riskTrend]);
+  }, [charts, riskTrend]);
   const openDelta = useMemo(() => {
     if (!riskTrend?.deltas) return 0;
     return (riskTrend.deltas.Critical||0)+(riskTrend.deltas.High||0)+(riskTrend.deltas.Medium||0)+(riskTrend.deltas.Low||0);
@@ -1268,7 +1274,7 @@ export function AdvancedDashboard() {
               <KpiCard
                 icon={ICON.warning} color="#ff8a3d" title="Open Findings"
                 value={<AnimatedNumber target={openFindings} />}
-                sub={<span className="text-ink-600 font-mono text-[11px]">unresolved</span>}
+                sub={<span className="text-ink-600 font-mono text-[11px]">active</span>}
                 trend={{value:openDelta,label:"since last 30 days"}}
                 trendSense={openDelta < 0 ? "positive" : openDelta > 0 ? "negative" : "neutral"}
               />

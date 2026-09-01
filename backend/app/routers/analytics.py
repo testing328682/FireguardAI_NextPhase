@@ -117,6 +117,13 @@ def trends(user: User = Depends(current_user), db: Session = Depends(get_db)) ->
 
 # ── Executive Summary (Security Analytics dashboard) ──────────────────────
 
+# Finding-status semantics used across all analytics widgets:
+#   * ACTIVE ("open")   — open, acknowledged, in_progress: counted as
+#                         "Open Findings" everywhere (severity distribution,
+#                         funnels, KPIs).
+#   * RESOLVED ("fixed")— fixed, false_positive, accepted_risk: counted in the
+#                         "Fixed" bucket of the Open vs Fixed widget.
+#   * suppressed        — excluded from the Open vs Fixed widget total.
 ACTIVE_FINDING_STATUSES = (FindingStatus.open, FindingStatus.acknowledged, FindingStatus.in_progress)
 # String forms of the above, for comparing against status-change event ``to_status``.
 _ACTIVE_STATUS_VALUES = {"open", "acknowledged", "in_progress"}
@@ -596,6 +603,9 @@ def dashboard_charts(
     }
 
     # ── 2b. Findings by status (Open vs In Progress vs Fixed) ─────────
+    # Buckets: Open = status "open"; In Progress = acknowledged + in_progress;
+    # Fixed = fixed + false_positive + accepted_risk; "suppressed" is excluded
+    # from the widget total (a finding is removed from the lifecycle view).
     status_rows = db.execute(
         select(Finding.status, func.count(Finding.id))
         .where(Finding.organization_id == org_id,
@@ -875,6 +885,10 @@ def risk_trend(
     dids = [d.strip() for d in device_ids.split(",") if d.strip()] if device_ids else None
     dev_ids = _device_filter(db, org_id, customer_id, dids)
 
+    # Risk Trend intentionally tracks the four active risk severities only —
+    # Info is excluded from this point-in-time series (it is noise for a risk
+    # trend). Widgets that need the full "Open Findings" population must read
+    # it from dashboard-charts, not from this trend.
     severities = ["Critical", "High", "Medium", "Low"]
     findings_by_day = _active_findings_by_day(db, org_id, dev_ids, days, tz_offset)
     trend: list[dict] = []
