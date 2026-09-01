@@ -123,7 +123,9 @@ frontend/                 # React 18 + TypeScript + Vite + Tailwind
     Modal.tsx             # Enterprise confirm/prompt dialogs
     icons.tsx             # SVG icon components
     Platform.tsx          # Cross-tenant operator dashboard
-    ProductConfig.tsx     # Device generations, model mappings, firmware
+    FirmwareRules.tsx     # "Firmware & Vulnerability Rules" (Rule Builder
+                          #   subpage): device generations, model mappings,
+                          #   firmware compliance rule, firmware intelligence
     CelBuilder.tsx        # Visual CEL rule builder; lazy searchable explorer
                           #   over the complete TSR snapshot (snapshot.config)
     ManagementRules.tsx   # Semantic management-exposure rules (structured
@@ -511,9 +513,19 @@ rule's **address reference** through the TSR before comparing.
   validation + permissions, end-to-end TSR upload → finding, and a gated
   reference-TSR acceptance check (real group chain to a live WAN interface).
 
-## Product Config firmware intelligence
+## Firmware & Vulnerability Rules (formerly "Product Config")
 
-Product Config (`#/config`, superadmin) is the firmware intelligence system:
+**Firmware & Vulnerability Rules** (`#/builder/firmware`, superadmin) is the
+firmware intelligence system. It is a Rule Builder subpage — nav:
+`Rule Builder → CEL Rule Builder / Management Rules / Firmware Rules`
+(short sidebar label; full page heading is "Firmware & Vulnerability
+Rules"). The legacy `#/config` route now redirects to `#/builder/firmware`
+so old bookmarks keep working. This was a UI-only rename/move — no backend
+route, table, or identifier changed (`routers/platform_config.py`,
+`/api/v1/platform/generations...`, `DeviceGeneration` / `FirmwareRecommendation`
+/ `FirmwareVersion` / etc. are unchanged); comments/docstrings/test names
+still say "Product Config" as the internal/conceptual name, which is fine
+since none of it is user-facing. It is the firmware intelligence system:
 generation → models → latest recommended firmware → **compliance-rule
 metadata** → **previous firmware versions** with structured **CVEs** and
 **known issues**.
@@ -561,7 +573,7 @@ metadata** → **previous firmware versions** with structured **CVEs** and
   `POST .../issues` + `DELETE /platform/firmware-issues/{id}` (title
   required, optional severity). Firmware rule keys may be shared across
   generations (the default is), matching the existing convention.
-- **Frontend** `ProductConfig.tsx`: per-generation collapsible "Firmware
+- **Frontend** `FirmwareRules.tsx`: per-generation collapsible "Firmware
   Compliance Rule" editor (latest version + metadata + enable toggle) and
   "Previous Firmware Versions" list with expandable per-version detail
   (remediation, CVE add/delete, issue add/delete).

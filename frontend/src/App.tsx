@@ -20,7 +20,7 @@ import { Organization } from "./components/Organization";
 import { Trends } from "./components/Trends";
 import { CelBuilder } from "./components/CelBuilder";
 import { ManagementRules } from "./components/ManagementRules";
-import { ProductConfig } from "./components/ProductConfig";
+import { FirmwareRules } from "./components/FirmwareRules";
 import { Platform } from "./components/Platform";
 import { TsrTester } from "./components/TsrTester";
 import { SecurityAnalytics } from "./components/SecurityAnalytics";
@@ -81,6 +81,7 @@ const TITLES: Record<string, string> = {
   "/plans": "Plan Management", "/tsr-tester": "TSR Analysis Tester",
   "/builder": "Rule Builder", "/builder/cel": "CEL Rule Builder",
   "/builder/management": "Management Rules",
+  "/builder/firmware": "Firmware & Vulnerability Rules",
   "/api-config": "API TSR Parser Config",
   "/page-control": "Page Control",
   "/settings/profile": "Settings", "/settings/organization": "Settings", "/settings/api-tokens": "Settings",
@@ -194,11 +195,11 @@ export default function App() {
           { path: "/builder", label: "Rule Builder", icon: "rules", children: [
             { path: "/builder/cel", label: "CEL Rule Builder" },
             { path: "/builder/management", label: "Management Rules" },
+            { path: "/builder/firmware", label: "Firmware Rules" },
           ]},
           { path: "/tsr-tester", label: "TSR Tester", icon: "devices" },
           { path: "/api-config", label: "API TSR Parser Config", icon: "integrations" },
           { path: "/page-control", label: "Page Control", icon: "platform" },
-          { path: "/config", label: "Product Config", icon: "platform" },
         ]},
         { title: "MSP", items: [
           { path: "/customers", label: "Customers", icon: "customers" },
@@ -449,10 +450,13 @@ function Routed({ route, user, customers, onUserChange, onSubtitle, onAnalysis }
   if (path === "/builder") return <Navigate to="/builder/cel" />;
   if (path === "/builder/cel") return <CelBuilder user={user} />;
   if (path === "/builder/management") return user?.is_superadmin ? <ManagementRules /> : <Dashboard />;
+  // "/config" is the old standalone Product Config route, kept as a redirect
+  // so existing bookmarks/links land on its new home under Rule Builder.
+  if (path === "/config") return <Navigate to="/builder/firmware" />;
+  if (path === "/builder/firmware") return <FirmwareRules />;
   if (path === "/tsr-tester") return user?.is_superadmin ? <TsrTester /> : <Dashboard />;
   if (path === "/api-config") return user?.is_superadmin ? <ApiFlowConfigPage /> : <Dashboard />;
   if (path === "/page-control") return user?.is_superadmin ? <PageControl /> : <Dashboard />;
-  if (path === "/config") return <ProductConfig />;
   if (path === "/integrations") return <Integrations />;
   // Devices is where firewalls are added (API or manual TSR upload).
   const deviceMatch = matchRoute("/devices/:id", path);

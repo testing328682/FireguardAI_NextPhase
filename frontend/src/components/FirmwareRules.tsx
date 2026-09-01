@@ -15,8 +15,10 @@ const DEFAULT_RULE: FirmwareRule = {
   severity: "Critical", category: "Firmware Compliance", remediation: "",
 };
 
-// ── Product & Platform Configuration ──────────────────────────────────
-export function ProductConfig() {
+// ── Firmware & Vulnerability Rules (Rule Builder subpage) ──────────────
+// Product generations · model mappings · firmware compliance rule ·
+// previous-firmware CVE/known-issue intelligence.
+export function FirmwareRules() {
   const [gens, setGens] = useState<DeviceGeneration[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,8 +64,8 @@ export function ProductConfig() {
     <div className="max-w-[1100px] fade-in space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink-100 tracking-tight">Product Configuration</h1>
-          <p className="font-mono text-[11px] text-ink-500 mt-1">Device generations · model mappings · firmware compliance</p>
+          <h1 className="font-display text-2xl font-bold text-ink-100 tracking-tight">Firmware &amp; Vulnerability Rules</h1>
+          <p className="font-mono text-[11px] text-ink-500 mt-1">Configure firmware compliance rules, supported device generations, and firmware vulnerability intelligence.</p>
         </div>
       </div>
 
