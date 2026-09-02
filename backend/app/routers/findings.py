@@ -265,17 +265,47 @@ def list_analysis_findings(analysis_id: str,
     snapshot_findings = result_json.get("findings", [])
 
     # Build lookup of current triage state keyed by fingerprint.
+    # A fingerprint can legitimately have multiple live rows (legacy duplicate
+    # rows from older analyses that sync_findings only collapses while active).
+    # Resolution is DETERMINISTIC so the snapshot summary can never flip
+    # between requests: an ACTIVE row (open / acknowledged / in_progress)
+    # always wins over a resolved row, and among equally-classed rows the most
+    # recently created wins. (The previous unordered last-wins made the mapped
+    # status depend on the scan order — the same TSR could summarize as
+    # "252 open" or "133 open" depending on row ordering.)
     from ..models import Device as DeviceModel
     device = db.get(DeviceModel, analysis.device_id)
     db_findings = db.scalars(select(Finding).where(
         Finding.device_id == analysis.device_id)).all() if device else []
+    _ACTIVE_STATES = {FindingStatus.open, FindingStatus.acknowledged, FindingStatus.in_progress}
     status_by_fp: dict[str, Finding] = {}
     for f in db_findings:
-        status_by_fp[f.fingerprint] = f
+        cur = status_by_fp.get(f.fingerprint)
+        if cur is None:
+            status_by_fp[f.fingerprint] = f
+            continue
+        cur_active = cur.status in _ACTIVE_STATES
+        f_active = f.status in _ACTIVE_STATES
+        if f_active and not cur_active:
+            status_by_fp[f.fingerprint] = f
+        elif f_active == cur_active and (f.created_at or f.id) > (cur.created_at or cur.id):
+            status_by_fp[f.fingerprint] = f
 
+    # Collapse duplicate-fingerprint snapshot entries into one row, matching the
+    # live findings table: sync_findings persists exactly one row per fingerprint
+    # (rule + object_type + object_name). A raw analysis snapshot can contain
+    # many entries sharing one fingerprint — e.g. dozens of address objects with
+    # a blank name "-" all yield ``AOB-003::Address Object::-`` — so emitting one
+    # row per array entry inflated this view's counts far above the authoritative
+    # live-table counts shown on the Dashboard and Security Analytics. Deduping
+    # here keeps all three surfaces on the same finding set and status semantics.
+    seen_fps: set[str] = set()
     out: list = []
     for sf in snapshot_findings:
         fp = f"{sf.get('rule_id','')}::{sf.get('object_type','')}::{sf.get('object_name','')}"
+        if fp in seen_fps:
+            continue
+        seen_fps.add(fp)
         live = status_by_fp.get(fp)
         current_status = live.status.value if live else "open"
 

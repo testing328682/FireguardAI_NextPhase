@@ -170,3 +170,119 @@ def test_dashboard_charts_and_executive_summary_agree(client, org_a):
     assert charts["severity_distribution"]["Critical"]["count"] == summary["critical_count"]
     assert charts["severity_distribution"]["High"]["count"] == summary["high_count"]
     assert charts["total_findings"] == 3
+
+
+def test_analysis_findings_status_is_deterministic(client, org_a):
+    """Snapshot cross-reference (GET /analyses/{id}/findings): an ACTIVE live
+    row always wins over a resolved row for the same fingerprint, regardless of
+    row order — so the Device Findings summary can never flip between requests
+    (previously unordered last-wins depended on scan order)."""
+    from app.models import Analysis, AnalysisStatus
+
+    db = SessionLocal()
+    try:
+        d = Device(organization_id=org_a["org_id"], customer_id=org_a["customer_id"],
+                   serial="SN-DET", friendly_name="SN-DET", configured=True,
+                   latest_score=0.0, latest_grade="F")
+        db.add(d)
+        db.flush()
+
+        snap_findings = [
+            {"rule_id": "R1", "object_type": "Address Object", "object_name": "OBJ1",
+             "severity": "High", "title": "t1", "category": "c"},
+            {"rule_id": "R2", "object_type": "Address Object", "object_name": "OBJ2",
+             "severity": "Low", "title": "t2", "category": "c"},
+        ]
+        a = Analysis(organization_id=org_a["org_id"], device_id=d.id,
+                     tsr_id=f"t-{d.id}", status=AnalysisStatus.complete, score=0.0, grade="F",
+                     finding_count=2, critical_count=0, high_count=1,
+                     result_json={"findings": snap_findings})
+        db.add(a)
+        db.flush()
+
+        # R1: RESOLVED row inserted FIRST, ACTIVE row second — active must win.
+        db.add(Finding(organization_id=org_a["org_id"], device_id=d.id, analysis_id=a.id,
+                       rule_id="R1", fingerprint="R1::Address Object::OBJ1",
+                       severity="High", title="t1", status=FindingStatus.fixed))
+        db.flush()
+        db.add(Finding(organization_id=org_a["org_id"], device_id=d.id, analysis_id=a.id,
+                       rule_id="R1", fingerprint="R1::Address Object::OBJ1",
+                       severity="High", title="t1", status=FindingStatus.open))
+        # R2: only a resolved row.
+        db.add(Finding(organization_id=org_a["org_id"], device_id=d.id, analysis_id=a.id,
+                       rule_id="R2", fingerprint="R2::Address Object::OBJ2",
+                       severity="Low", title="t2", status=FindingStatus.fixed))
+        db.commit()
+        aid = a.id
+    finally:
+        db.close()
+
+    h = auth_headers(client, org_a["email"], org_a["password"])
+    res = client.get(f"/api/v1/analyses/{aid}/findings", headers=h)
+    assert res.status_code == 200, res.text
+    statuses = {r["rule_id"]: r["status"] for r in res.json()}
+    assert statuses == {"R1": "open", "R2": "fixed"}
+
+
+def test_analysis_findings_dedupe_matches_live_table(client, org_a):
+    """The Device Findings snapshot view (GET /analyses/{id}/findings) must
+    collapse duplicate-fingerprint snapshot entries into one row, exactly as
+    sync_findings dedupes the live table. Otherwise objects that share an
+    identity — e.g. many address objects with a blank name "-" — inflate the
+    device view far above the account-level Dashboard/Analytics counts.
+
+    Reproduces the reported case: a snapshot with 60 AOB entries all named "-"
+    plus one distinct finding — 61 array entries, 2 unique fingerprints — must
+    surface as exactly 2 device-view rows and 1 open (matching the single live
+    active row), not 60 open.
+    """
+    from app.models import Analysis, AnalysisStatus
+
+    db = SessionLocal()
+    try:
+        d = Device(organization_id=org_a["org_id"], customer_id=org_a["customer_id"],
+                   serial="SN-DUP", friendly_name="SN-DUP", configured=True,
+                   latest_score=0.0, latest_grade="F")
+        db.add(d)
+        db.flush()
+
+        # 60 snapshot entries sharing one fingerprint (blank object name "-"),
+        # plus one genuinely-distinct finding.
+        snap_findings = [
+            {"rule_id": "AOB-003", "object_type": "Address Object", "object_name": "-",
+             "severity": "Low", "title": f"blank object {i}", "category": "Address Objects"}
+            for i in range(60)
+        ] + [
+            {"rule_id": "AOB-001", "object_type": "Address Object", "object_name": "X0 IP",
+             "severity": "High", "title": "named object", "category": "Address Objects"},
+        ]
+        a = Analysis(organization_id=org_a["org_id"], device_id=d.id,
+                     tsr_id=f"t-{d.id}", status=AnalysisStatus.complete, score=0.0,
+                     grade="F", finding_count=len(snap_findings), critical_count=0,
+                     high_count=1, result_json={"findings": snap_findings})
+        db.add(a)
+        db.flush()
+
+        # The live table has exactly one row per unique fingerprint (what
+        # sync_findings would persist): both currently open.
+        db.add(Finding(organization_id=org_a["org_id"], device_id=d.id, analysis_id=a.id,
+                       rule_id="AOB-003", fingerprint="AOB-003::Address Object::-",
+                       severity="Low", title="blank object", status=FindingStatus.open))
+        db.add(Finding(organization_id=org_a["org_id"], device_id=d.id, analysis_id=a.id,
+                       rule_id="AOB-001", fingerprint="AOB-001::Address Object::X0 IP",
+                       severity="High", title="named object", status=FindingStatus.open))
+        db.commit()
+        aid = a.id
+    finally:
+        db.close()
+
+    h = auth_headers(client, org_a["email"], org_a["password"])
+    rows = client.get(f"/api/v1/analyses/{aid}/findings", headers=h).json()
+    # 61 snapshot entries collapse to 2 unique-fingerprint rows.
+    assert len(rows) == 2
+    open_rows = [r for r in rows if r["status"] == "open"]
+    assert len(open_rows) == 2
+    # Device view now agrees with the live findings table for this device.
+    live = client.get(f"/api/v1/findings?device_id={d.id}", headers=h).json()
+    live_open = [r for r in live if r["status"] == "open"]
+    assert len(open_rows) == len(live_open) == 2

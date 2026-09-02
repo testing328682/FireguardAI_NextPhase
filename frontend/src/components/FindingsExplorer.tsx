@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { usePrompt } from "./Modal";
 import { api } from "../lib/api";
-import type { FindingRow, FindingStatus, Customer, Device, AnalysisSummary, DriftCompare, ExecutiveSummary, RiskTrend, DashboardCharts } from "../lib/types";
+import type { FindingRow, FindingStatus, Customer, Device, AnalysisSummary, DriftCompare, ExecutiveSummary, RiskTrend } from "../lib/types";
 import { navigate } from "../lib/router";
 import {
   SEVERITIES, sevColor, STATUS_LABEL, statusColor, fmtDate, ACTIVE_STATUSES, triggerDownload, gradeColor,
@@ -106,7 +106,6 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
   // ── Device-scoped KPI widgets (Security Analytics context only) ──────
   const [deviceSummary, setDeviceSummary] = useState<ExecutiveSummary | null>(null);
   const [deviceRiskTrend, setDeviceRiskTrend] = useState<RiskTrend | null>(null);
-  const [deviceCharts, setDeviceCharts] = useState<DashboardCharts | null>(null);
   const [deviceRangeDays, setDeviceRangeDays] = useState(30);
   const localToday = useCallback(() => {
     const now = new Date();
@@ -119,7 +118,6 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
     const tzo = localTzOffset();
     api.executiveSummary(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceSummary).catch(() => setDeviceSummary(null));
     api.riskTrend(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceRiskTrend).catch(() => setDeviceRiskTrend(null));
-    api.dashboardCharts(deviceRangeDays, undefined, deviceId, lt, tzo).then(setDeviceCharts).catch(() => setDeviceCharts(null));
   }, [backRoute, deviceId, deviceRangeDays, localToday, localTzOffset]);
   useEffect(() => {
     if (backRoute && deviceId) {
@@ -127,7 +125,6 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
     } else {
       setDeviceSummary(null);
       setDeviceRiskTrend(null);
-      setDeviceCharts(null);
     }
   }, [backRoute, deviceId, deviceRangeDays]);
 
@@ -141,7 +138,6 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
         findingDetailRoute="/security-analytics/finding"
         deviceSummary={backRoute ? deviceSummary : null}
         deviceRiskTrend={backRoute ? deviceRiskTrend : null}
-        deviceCharts={backRoute ? deviceCharts : null}
         rangeDays={deviceRangeDays}
         setRangeDays={setDeviceRangeDays}
         onRefresh={refreshDeviceData}
@@ -364,14 +360,13 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
 }
 
 // ── Device-specific findings view ──────────────────────────────────────
-function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, deviceSummary, deviceRiskTrend, deviceCharts, rangeDays, setRangeDays, onRefresh, orgHidden: parentOrgHidden }: {
+function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, deviceSummary, deviceRiskTrend, rangeDays, setRangeDays, onRefresh, orgHidden: parentOrgHidden }: {
   deviceId: string;
   stats: { sev: Record<string, number>; resolved: number; open: number; inProgress: number; selectedDevice: Device | null; total: number };
   onBack: () => void;
   findingDetailRoute: string;
   deviceSummary: ExecutiveSummary | null;
   deviceRiskTrend: RiskTrend | null;
-  deviceCharts: DashboardCharts | null;
   rangeDays: number;
   setRangeDays: (d: number) => void;
   onRefresh: () => void;
@@ -503,27 +498,14 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
 
   const totalFiltered = filteredRows.length;
 
-  // Filter device-level charts/trend data by active hidden severities
-  const activeHidden = effHidden;
-  const filteredCharts = useMemo(() => {
-    if (!deviceCharts || activeHidden.length === 0) return deviceCharts;
-    const dist = { ...deviceCharts.severity_distribution };
-    let removed = 0;
-    for (const s of activeHidden) { removed += dist[s]?.count || 0; delete dist[s]; }
-    const newTotal = (deviceCharts.total_findings || 0) - removed;
-    for (const k of Object.keys(dist)) {
-      dist[k] = { ...dist[k], pct: newTotal > 0 ? Math.round((dist[k].count / newTotal) * 1000) / 10 : 0 };
-    }
-    return { ...deviceCharts, severity_distribution: dist, total_findings: newTotal };
-  }, [deviceCharts, activeHidden]);
   const filteredRiskTrend = useMemo(() => {
-    if (!deviceRiskTrend || activeHidden.length === 0) return deviceRiskTrend;
+    if (!deviceRiskTrend || effHidden.length === 0) return deviceRiskTrend;
     return {
       ...deviceRiskTrend,
-      trend: deviceRiskTrend.trend.map((p: any) => { const r = { ...p }; for (const s of activeHidden) delete r[s]; return r; }),
-      deltas: (() => { const d = { ...deviceRiskTrend.deltas }; for (const s of activeHidden) delete d[s]; return d; })(),
+      trend: deviceRiskTrend.trend.map((p: any) => { const r = { ...p }; for (const s of effHidden) delete r[s]; return r; }),
+      deltas: (() => { const d = { ...deviceRiskTrend.deltas }; for (const s of effHidden) delete d[s]; return d; })(),
     };
-  }, [deviceRiskTrend, activeHidden]);
+  }, [deviceRiskTrend, effHidden]);
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
 
   // Clamp the active page so an out-of-range index (e.g. left over from a larger
@@ -559,6 +541,22 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     const selAnalysis = selectedAnalysisId ? analyses.find((a) => a.id === selectedAnalysisId) : null;
     return { sev, sevTotal, resolved, open, inProgress, totalFindings: totalVisible, score: selAnalysis?.score || 0, grade: selAnalysis?.grade || "" };
   }, [allAnalysisRows, selectedAnalysisId, analyses, orgHidden, devHidden]);
+
+  // Findings by Severity widget — derived from the SAME population as the
+  // summary strip above: the selected TSR's snapshot findings cross-referenced
+  // with live triage status (analysisStats). Active-status counts per severity,
+  // percentages against the active total, so the widget and the KPI strip can
+  // never disagree (previously this widget read the live findings table via
+  // dashboard-charts, which is a different population — e.g. 140 vs 252).
+  const severityDist = useMemo(() => {
+    const dist: Record<string, { count: number; pct: number }> = {};
+    const total = SEVERITIES.reduce((s, sev) => s + (analysisStats.sev[sev] || 0), 0);
+    for (const sev of SEVERITIES) {
+      const count = analysisStats.sev[sev] || 0;
+      dist[sev] = { count, pct: total > 0 ? Math.round((count / total) * 1000) / 10 : 0 };
+    }
+    return { dist, total };
+  }, [analysisStats]);
 
   async function exportReport(kind: "technical" | "csv" | "xlsx") {
     if (!selectedAnalysisId) return;
@@ -766,14 +764,12 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
             tooltip="High-severity findings for this device."
           />
           <RiskTrendWidget data={filteredRiskTrend} loading={!deviceRiskTrend} rangeDays={rangeDays} />
-          {filteredCharts && (
-            <FindingsBySeverityWidget
-              distribution={filteredCharts.severity_distribution}
-              total={filteredCharts.total_findings}
-              onSeverityClick={() => {}}
-              activeSeverity={null}
-            />
-          )}
+          <FindingsBySeverityWidget
+            distribution={severityDist.dist}
+            total={severityDist.total}
+            onSeverityClick={() => {}}
+            activeSeverity={null}
+          />
         </div>
       )}
 

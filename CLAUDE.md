@@ -199,7 +199,14 @@ total open, last scan). Clicking a device opens the device-specific view.
 analysis's `result_json` snapshot via `GET /analyses/{analysis_id}/findings`,
 cross-referenced with the live findings table for current triage status.
 This preserves the exact set of findings from that TSR, unlike the live
-findings table where rows are mutated across scans.
+findings table where rows are mutated across scans. The endpoint dedupes
+snapshot entries by fingerprint (rule + object_type + object_name), exactly
+as `sync_findings` dedupes the live table — a raw snapshot can hold many
+entries sharing one fingerprint (e.g. dozens of address objects with a blank
+name `-` all yield `AOB-003::Address Object::-`), so without dedup the Device
+Findings view over-counted far above the account-level Dashboard / Security
+Analytics figures (which read the deduped live table). All three surfaces now
+reconcile: sum of per-device open == account Open Findings.
 
 **Severity counts**: Only count findings with active statuses (open, acknowledged,
 in_progress). Resolved/fixed findings don't inflate the severity KPI cards.

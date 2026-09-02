@@ -35,3 +35,6 @@ reports/
 
 # Local reference TSRs (real customer reports - never publish)
 TSRs/
+
+# graphify knowledge-graph output (regeneratable local artifact)
+graphify-out/
