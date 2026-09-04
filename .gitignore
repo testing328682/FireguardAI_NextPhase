@@ -38,3 +38,7 @@ TSRs/
 
 # graphify knowledge-graph output (regeneratable local artifact)
 graphify-out/
+
+# Tool/editor local state (may contain tokens)
+.claude/
+.deepseek/
