@@ -389,6 +389,28 @@ function SecurityScoreTrend({ customerId }: { customerId: string }) {
     return trimmed;
   }, [trend, currentScore]);
 
+  // Y-axis maximum: next multiple of 10 above the highest score in the
+  // currently selected timeline (ceil(highest / 10) * 10) — a fixed 100
+  // squashed low-scoring periods into the bottom of the chart. Minimum stays
+  // 0. Recomputes whenever the timeline (range or refresh) changes.
+  const maxY = useMemo(() => {
+    if (data.length === 0) return 100;
+    const hi = Math.max(...data.map((p) => Number(p.value) || 0));
+    return Math.max(10, Math.ceil(hi / 10) * 10);
+  }, [data]);
+
+  // Round tick labels that fit the dynamic domain. Quarters when the domain
+  // divides by 4 (40 → 0/10/20/30/40, 100 → the classic 0/25/50/75/100);
+  // otherwise multiples of 10/20 up to maxY (always including maxY).
+  const yTicks = useMemo(() => {
+    if (maxY % 4 === 0) return [0, maxY / 4, maxY / 2, (3 * maxY) / 4, maxY];
+    const step = maxY <= 50 ? 10 : 20;
+    const t: number[] = [];
+    for (let v = 0; v < maxY; v += step) t.push(v);
+    t.push(maxY);
+    return t;
+  }, [maxY]);
+
   // Evenly distributed date ticks (first, last, and spaced middles)
   const ticks = useMemo(() => {
     const n = data.length;
@@ -466,7 +488,7 @@ function SecurityScoreTrend({ customerId }: { customerId: string }) {
                      tickFormatter={fmtShort}
                      tick={{ fontSize: 10, fill: "#7a879b" }}
                      axisLine={{ stroke: "#7a879b33" }} tickLine={false} height={22} />
-              <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]}
+              <YAxis domain={[0, maxY]} ticks={yTicks}
                      tick={{ fontSize: 10, fill: "#7a879b" }}
                      axisLine={false} tickLine={false} width={34} />
               <Tooltip content={tooltipContent} />

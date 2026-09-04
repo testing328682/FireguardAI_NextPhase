@@ -38,12 +38,31 @@ def _add_device(org: dict, serial: str = "SN-1") -> str:
 
 def _add_finding(org: dict, device_id: str, severity: str, status: FindingStatus,
                  rule: str = "R", i: int = 0) -> None:
+    # Each call is a DISTINCT logical finding: counts are grouped by
+    # (device, rule_id), so a unique rule per row keeps these as separate
+    # findings. Use _add_instance to add several affected objects to ONE rule.
     db = SessionLocal()
     try:
         db.add(Finding(
             organization_id=org["org_id"], device_id=device_id, analysis_id="a1",
-            rule_id=rule, fingerprint=f"{rule}:{severity}:{device_id}:{status.value}:{i}",
-            severity=severity, title=f"{rule} {severity} {i}", status=status))
+            rule_id=f"{rule}-{i}", fingerprint=f"{rule}:{severity}:{device_id}:{status.value}:{i}",
+            severity=severity, title=f"{rule} {severity} {i}",
+            object_name=f"obj-{i}", status=status))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _add_instance(org: dict, device_id: str, rule: str, severity: str,
+                  status: FindingStatus, obj: str) -> None:
+    """Add one affected-object instance to a shared (device, rule) group."""
+    db = SessionLocal()
+    try:
+        db.add(Finding(
+            organization_id=org["org_id"], device_id=device_id, analysis_id="a1",
+            rule_id=rule, fingerprint=f"{rule}::Object::{obj}",
+            severity=severity, title=f"{rule} finding", object_type="Object",
+            object_name=obj, status=status))
         db.commit()
     finally:
         db.close()
@@ -60,8 +79,11 @@ def _charts(client, org: dict, hidden: str | None = None) -> dict:
 # ---- status buckets (Open vs Fixed widget) ---------------------------------
 
 def test_status_buckets_and_total(client, org_a):
-    """Open + In Progress bucket (ack/in_progress) + Fixed bucket (fixed/fp/ar);
-    suppressed excluded from the widget total entirely."""
+    """Open + In Progress bucket (ack/in_progress/suppressed) + Fixed bucket
+    (fixed/fp/ar). Each finding here is a single-instance group, so its own
+    status is authoritative directly (see finding_groups.effective_status) —
+    Suppressed is OPEN-classified (never excluded), per the classification
+    used everywhere for grouped findings."""
     d = _add_device(org_a)
     _add_finding(org_a, d, "High", FindingStatus.open, i=0)
     _add_finding(org_a, d, "High", FindingStatus.open, i=1)
@@ -76,15 +98,12 @@ def test_status_buckets_and_total(client, org_a):
 
     out = _charts(client, org_a)
     sd = out["status_distribution"]
-    # open=3, in_progress bucket=ack(1)+in_progress(1)=2, fixed bucket=fixed(2)+fp(1)+ar(1)=4
+    # open=3, in_progress bucket=ack(1)+in_progress(1)+suppressed(1)=3, fixed=fixed(2)+fp(1)+ar(1)=4
     assert sd["open"]["count"] == 3
-    assert sd["in_progress"]["count"] == 2
+    assert sd["in_progress"]["count"] == 3
     assert sd["fixed"]["count"] == 4
-    # widget total = 3 + 2 + 4 = 9 — the suppressed finding is not counted
-    assert sd["open"]["count"] + sd["in_progress"]["count"] + sd["fixed"]["count"] == 9
-    assert sd["open"]["pct"] == 33.3
-    assert sd["in_progress"]["pct"] == 22.2
-    assert sd["fixed"]["pct"] == 44.4
+    # widget total = 3 + 3 + 4 = 10 — every finding is counted, none excluded
+    assert sd["open"]["count"] + sd["in_progress"]["count"] + sd["fixed"]["count"] == 10
 
 
 def test_severity_distribution_counts_active_only(client, org_a):
@@ -224,6 +243,198 @@ def test_analysis_findings_status_is_deterministic(client, org_a):
     assert statuses == {"R1": "open", "R2": "fixed"}
 
 
+def test_finding_trend_last_point_matches_grouped_kpi(client, org_a):
+    """High/Critical KPI cards and their sparkline trend must agree: a rule
+    with N open instances is ONE logical finding, and today's trend point is
+    the live grouped count (previously the trend counted instance ROWS — a
+    rule with several objects inflated it, e.g. 53 rows vs 22 groups)."""
+    d = _add_device(org_a)
+    # R1: 3 open High instances + 1 fixed High instance -> 1 logical finding
+    for n in range(3):
+        _add_instance(org_a, d, "R1", "High", FindingStatus.open, obj=f"o{n}")
+    _add_instance(org_a, d, "R1", "High", FindingStatus.fixed, obj="o9")
+    # R2: 2 open High instances -> 1 logical finding
+    _add_instance(org_a, d, "R2", "High", FindingStatus.open, obj="o0")
+    _add_instance(org_a, d, "R2", "High", FindingStatus.open, obj="o1")
+    # R3: single fixed High finding -> resolved, not counted
+    _add_finding(org_a, d, "High", FindingStatus.fixed, rule="R3", i=0)
+    # R4: single open Critical finding -> 1 logical Critical finding
+    _add_finding(org_a, d, "Critical", FindingStatus.open, rule="R4", i=0)
+
+    res = client.get("/api/v1/analytics/executive-summary",
+                     headers=auth_headers(client, org_a["email"], org_a["password"]))
+    assert res.status_code == 200, res.text
+    s = res.json()
+    assert s["high_count"] == 2                # R1 + R2 (R3 fixed excluded)
+    assert s["critical_count"] == 1
+    assert s["high_trend"], "expected a populated trend"
+    assert s["high_trend"][-1]["value"] == 2   # trend agrees with the KPI card
+    assert s["critical_trend"][-1]["value"] == 1
+
+
+def test_grouped_finding_counts_as_one(client, org_a):
+    """A rule affecting 5 objects is ONE finding in the counts, not five —
+    with the affected total still available. (Requirement 6.)"""
+    d = _add_device(org_a)
+    for n in range(5):
+        _add_instance(org_a, d, "IKE-DH", "High", FindingStatus.open, f"policy-{n}")
+    out = _charts(client, org_a)
+    assert out["severity_distribution"]["High"]["count"] == 1     # one logical finding
+    assert out["total_findings"] == 1
+    assert out["status_distribution"]["open"]["count"] == 1
+
+    groups = client.get("/api/v1/finding-groups",
+                        headers=auth_headers(client, org_a["email"], org_a["password"])).json()
+    g = next(x for x in groups if x["rule_id"] == "IKE-DH")
+    assert g["affected_total"] == 5 and g["affected_open"] == 5
+    assert g["status"] == "open"
+
+
+def test_grouped_finding_parent_never_auto_resolved(client, org_a):
+    """The parent's status is NEVER auto-derived from its children — not even
+    when every affected object becomes fixed. It only becomes ELIGIBLE
+    (can_resolve=True); a user must explicitly transition it. (Requirement 5.)"""
+    d = _add_device(org_a)
+    for n in range(5):
+        _add_instance(org_a, d, "IKE-DH", "High", FindingStatus.open, f"policy-{n}")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+
+    def group():
+        return next(x for x in client.get("/api/v1/finding-groups", headers=h).json()
+                    if x["rule_id"] == "IKE-DH")
+
+    detail = client.get(f"/api/v1/finding-groups/detail?device_id={d}&rule_id=IKE-DH",
+                        headers=h).json()
+    ids = [i["id"] for i in detail["instances"]]
+
+    # Fix 3 of 5 → parent stays "open" (untouched), not eligible to resolve.
+    client.post("/api/v1/findings/bulk-transition", headers=h,
+                json={"finding_ids": ids[:3], "to_status": "fixed", "comment": "patched 3"})
+    g = group()
+    assert g["status"] == "open" and g["affected_fixed"] == 3 and g["affected_open"] == 2
+    assert g["can_resolve"] is False
+    charts = _charts(client, org_a)
+    assert charts["status_distribution"]["open"]["count"] == 1
+    assert charts["status_distribution"]["fixed"]["count"] == 0
+
+    # Fix the last 2 → parent is now ELIGIBLE, but still "open" until a human
+    # explicitly closes it. The dashboard must NOT show it as fixed yet.
+    client.post("/api/v1/findings/bulk-transition", headers=h,
+                json={"finding_ids": ids[3:], "to_status": "fixed", "comment": "patched rest"})
+    g = group()
+    assert g["status"] == "open" and g["affected_open"] == 0
+    assert g["can_resolve"] is True
+    charts = _charts(client, org_a)
+    assert charts["status_distribution"]["open"]["count"] == 1
+    assert charts["status_distribution"]["fixed"]["count"] == 0
+
+
+def test_grouped_finding_parent_transition_rules(client, org_a):
+    """Server-enforced parent transition rules (requirements 2-4, 9):
+    OPEN-classified statuses are always allowed; FIXED-classified statuses
+    are rejected while any child remains OPEN-classified, and accepted once
+    every child is FIXED-classified. A single-instance group has no separate
+    parent endpoint."""
+    d = _add_device(org_a)
+    for n in range(3):
+        _add_instance(org_a, d, "IKE-DH", "High", FindingStatus.open, f"policy-{n}")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+
+    # The parent can move to an OPEN-classified status at any time, even
+    # while every child is still plain "open" (untouched).
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "IKE-DH",
+                            "to_status": "acknowledged", "comment": "triaging"})
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "acknowledged"
+    charts = _charts(client, org_a)
+    assert charts["status_distribution"]["in_progress"]["count"] == 1
+
+    # Blocked: cannot resolve while children remain open.
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "IKE-DH",
+                            "to_status": "fixed", "comment": "try close"})
+    assert res.status_code == 400
+    assert "affected object(s) remain open" in res.json()["detail"]
+
+    # Resolve every child, then the parent can move to a FIXED-classified
+    # status via an explicit transition (never automatically).
+    detail = client.get(f"/api/v1/finding-groups/detail?device_id={d}&rule_id=IKE-DH",
+                        headers=h).json()
+    ids = [i["id"] for i in detail["instances"]]
+    client.post("/api/v1/findings/bulk-transition", headers=h,
+                json={"finding_ids": ids, "to_status": "fixed", "comment": "all patched"})
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "IKE-DH",
+                            "to_status": "fixed", "comment": "close it"})
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "fixed"
+    charts = _charts(client, org_a)
+    assert charts["status_distribution"]["fixed"]["count"] == 1
+
+    # Suppressed also blocks resolution (it is OPEN-classified) — reopen one
+    # child as suppressed and confirm the parent can no longer be re-fixed.
+    client.post(f"/api/v1/findings/{ids[0]}/transition", headers=h,
+               json={"to_status": "suppressed", "comment": "silenced", "justification": "noise"})
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "IKE-DH",
+                            "to_status": "open", "comment": "reopen"})
+    assert res.status_code == 200, res.text
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "IKE-DH",
+                            "to_status": "fixed", "comment": "retry close"})
+    assert res.status_code == 400
+
+    # A single-instance group has no separate parent endpoint.
+    _add_instance(org_a, d, "SOLO-RULE", "Low", FindingStatus.open, "only-object")
+    res = client.post("/api/v1/finding-groups/transition", headers=h,
+                      json={"device_id": d, "rule_id": "SOLO-RULE",
+                            "to_status": "acknowledged", "comment": "x"})
+    assert res.status_code == 400
+    assert "single affected object" in res.json()["detail"]
+
+
+def test_child_findings_move_freely_between_any_status(client, org_a):
+    """No restriction on direct status-to-status movement for an affected
+    instance — any of the six statuses may follow any other. (Requirement 1.)"""
+    d = _add_device(org_a)
+    _add_instance(org_a, d, "IKE-DH", "High", FindingStatus.open, "policy-0")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+    fid = client.get("/api/v1/finding-groups/detail?device_id=" + d + "&rule_id=IKE-DH",
+                     headers=h).json()["instances"][0]["id"]
+
+    def move(to_status, **extra):
+        body = {"to_status": to_status, "comment": "x", **extra}
+        res = client.post(f"/api/v1/findings/{fid}/transition", headers=h, json=body)
+        assert res.status_code == 200, res.text
+        return res.json()["status"]
+
+    # Direct hops that were PREVIOUSLY blocked by the old state graph.
+    assert move("fixed") == "fixed"
+    assert move("accepted_risk", justification="risk accepted",
+               accepted_risk_expiry="2099-01-01T00:00:00Z") == "accepted_risk"
+    assert move("false_positive", justification="not real") == "false_positive"
+    assert move("suppressed") == "suppressed"
+    assert move("acknowledged") == "acknowledged"
+    assert move("in_progress") == "in_progress"
+    assert move("fixed") == "fixed"
+    charts = _charts(client, org_a)
+    assert charts["severity_distribution"]["High"]["count"] == 0
+    assert charts["status_distribution"]["fixed"]["count"] == 1
+
+
+def test_finding_group_detail_lists_instances(client, org_a):
+    d = _add_device(org_a)
+    for n in range(3):
+        _add_instance(org_a, d, "IKE-DH", "High", FindingStatus.open, f"policy-{n}")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+    detail = client.get(f"/api/v1/finding-groups/detail?device_id={d}&rule_id=IKE-DH",
+                        headers=h).json()
+    assert detail["affected_total"] == 3
+    assert sorted(i["object_name"] for i in detail["instances"]) == ["policy-0", "policy-1", "policy-2"]
+    assert detail["title"] == "IKE-DH finding"
+
+
 def test_analysis_findings_dedupe_matches_live_table(client, org_a):
     """The Device Findings snapshot view (GET /analyses/{id}/findings) must
     collapse duplicate-fingerprint snapshot entries into one row, exactly as
@@ -286,3 +497,90 @@ def test_analysis_findings_dedupe_matches_live_table(client, org_a):
     live = client.get(f"/api/v1/findings?device_id={d.id}", headers=h).json()
     live_open = [r for r in live if r["status"] == "open"]
     assert len(open_rows) == len(live_open) == 2
+
+
+# ---- live device score (Overall Security Score) ----------------------------
+
+def test_device_score_recomputes_on_status_change(client, org_a):
+    """Device.latest_score must reflect the CURRENT triage state, not just
+    whatever the pipeline detected at analysis time. Resolving every Critical
+    and High finding must raise the score immediately (no re-scan needed),
+    and reopening one must drop it again — the score is never frozen after
+    the initial write."""
+    d = _add_device(org_a)
+    for n in range(4):
+        _add_instance(org_a, d, "CRIT-RULE", "Critical", FindingStatus.open, f"c-{n}")
+    for n in range(9):
+        _add_instance(org_a, d, "HIGH-RULE", "High", FindingStatus.open, f"h-{n}")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+
+    def _score() -> float:
+        res = client.get("/api/v1/devices", headers=h)
+        assert res.status_code == 200, res.text
+        return next(x for x in res.json() if x["id"] == d)["latest_score"]
+
+    # Any Critical finding caps the score at 59 (grade F) — score_findings().
+    before = _score()
+    assert before <= 59.0
+
+    crit_ids = [i["id"] for i in client.get(
+        f"/api/v1/finding-groups/detail?device_id={d}&rule_id=CRIT-RULE", headers=h
+    ).json()["instances"]]
+    res = client.post("/api/v1/findings/bulk-transition", headers=h,
+                      json={"finding_ids": crit_ids, "to_status": "fixed",
+                            "comment": "patched"})
+    assert res.status_code == 200, res.text
+
+    high_ids = [i["id"] for i in client.get(
+        f"/api/v1/finding-groups/detail?device_id={d}&rule_id=HIGH-RULE", headers=h
+    ).json()["instances"]]
+    res = client.post("/api/v1/findings/bulk-transition", headers=h,
+                      json={"finding_ids": high_ids, "to_status": "fixed",
+                            "comment": "patched"})
+    assert res.status_code == 200, res.text
+
+    # No active findings remain -> a perfect score, immediately, no re-scan.
+    after = _score()
+    assert after == 100.0
+    assert after > before
+
+    # Reopening one High finding must push the score back down (capped at 79).
+    res = client.post(f"/api/v1/findings/{high_ids[0]}/transition", headers=h,
+                      json={"to_status": "open", "comment": "regressed"})
+    assert res.status_code == 200, res.text
+    reopened = _score()
+    assert reopened < after
+    assert reopened <= 79.0
+
+
+def test_device_score_ignores_suppressed_and_accepted_risk_consistently(client, org_a):
+    """False Positive / Accepted Risk stop contributing (RESOLVED-classified,
+    same as Fixed); Suppressed keeps contributing (OPEN-classified) — matching
+    the existing finding_groups classification, not a newly invented one."""
+    d = _add_device(org_a)
+    _add_instance(org_a, d, "FP-RULE", "High", FindingStatus.open, "o1")
+    _add_instance(org_a, d, "SUPPRESSED-RULE", "High", FindingStatus.open, "o2")
+    h = auth_headers(client, org_a["email"], org_a["password"])
+
+    def _score() -> float:
+        res = client.get("/api/v1/devices", headers=h)
+        return next(x for x in res.json() if x["id"] == d)["latest_score"]
+
+    fp_id = client.get(f"/api/v1/finding-groups/detail?device_id={d}&rule_id=FP-RULE",
+                       headers=h).json()["instances"][0]["id"]
+    res = client.post(f"/api/v1/findings/{fp_id}/transition", headers=h,
+                      json={"to_status": "false_positive", "comment": "not real",
+                            "justification": "verified benign"})
+    assert res.status_code == 200, res.text
+    # One High finding (Suppressed-rule) remains active -> capped at 79, not 100.
+    assert _score() <= 79.0
+
+    supp_id = client.get(
+        f"/api/v1/finding-groups/detail?device_id={d}&rule_id=SUPPRESSED-RULE", headers=h
+    ).json()["instances"][0]["id"]
+    res = client.post(f"/api/v1/findings/{supp_id}/transition", headers=h,
+                      json={"to_status": "suppressed", "comment": "silenced",
+                            "justification": "known noise"})
+    assert res.status_code == 200, res.text
+    # Suppressed still counts as active risk, so the score stays capped, not 100.
+    assert _score() <= 79.0

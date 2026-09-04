@@ -23,6 +23,7 @@ from ..models import (
     DeviceGeneration, GenerationDevice, FirmwareRecommendation,
 )
 from ..security import current_user
+from .. import finding_groups
 
 router = APIRouter(prefix="/api/v1", tags=["analytics"])
 
@@ -203,24 +204,26 @@ def _finding_timelines(db, org_id: str, device_ids: list[str] | None):
     present state to the live status, so today's trend point always equals the
     live card count.
 
-    Returns ``(severity_by_id, timelines)`` where each timeline is a chronological
-    list of ``(utc_instant, is_active)`` transitions.
+    Returns ``(severity_by_id, group_by_id, timelines)`` where each timeline is
+    a chronological list of ``(utc_instant, is_active)`` transitions.
     """
-    fq = select(Finding.id, Finding.severity, Finding.first_seen_at,
-                Finding.created_at, Finding.resolved_at, Finding.status).where(
-        Finding.organization_id == org_id)
+    fq = select(Finding.id, Finding.device_id, Finding.rule_id, Finding.severity,
+                Finding.first_seen_at, Finding.created_at, Finding.resolved_at,
+                Finding.status).where(Finding.organization_id == org_id)
     if device_ids:
         fq = fq.where(Finding.device_id.in_(device_ids))
     severity_by_id: dict[str, str] = {}
+    group_by_id: dict[str, tuple[str, str]] = {}
     timelines: dict[str, list[tuple[datetime, bool]]] = {}
     current_active: dict[str, bool] = {}
-    for fid, severity, first_seen, created, resolved, fstatus in db.execute(fq):
+    for fid, dev_id, rule_id, severity, first_seen, created, resolved, fstatus in db.execute(fq):
         born = _coerce_utc(first_seen) or _coerce_utc(created) or datetime.now(timezone.utc)
         tl: list[tuple[datetime, bool]] = [(born, True)]
         rz = _coerce_utc(resolved)
         if rz is not None:
             tl.append((rz, False))
         severity_by_id[fid] = severity
+        group_by_id[fid] = (dev_id, rule_id)
         status_val = fstatus.value if hasattr(fstatus, "value") else str(fstatus)
         current_active[fid] = status_val in _ACTIVE_STATUS_VALUES
         timelines[fid] = tl
@@ -238,26 +241,41 @@ def _finding_timelines(db, org_id: str, device_ids: list[str] | None):
     for fid, tl in timelines.items():
         tl.append((now, current_active[fid]))
         tl.sort(key=lambda x: x[0])
-    return severity_by_id, timelines
+    return severity_by_id, group_by_id, timelines
 
 
 def _active_findings_by_day(db, org_id: str, device_ids: list[str] | None,
                             days: list[date], tz_offset_min: int) -> dict[str, dict[str, int]]:
-    """Dense per-day active-finding counts by severity.
+    """Dense per-day ACTIVE LOGICAL FINDING counts by severity.
 
-    Each day's value is the number of findings active as of the END of that local
-    day — a point-in-time reconstruction, so historical days are immutable.
+    One logical finding = one ``(device_id, rule_id)`` group (the application's
+    finding model: a rule affecting N objects is ONE finding, see
+    ``finding_groups``). A group is active on a day when ANY of its instance
+    rows was active as of the END of that local day — a point-in-time
+    reconstruction, so historical days are immutable. Counting groups (not
+    rows) keeps the trend on the same population as the grouped cards/donuts;
+    the executive summary additionally pins today's point to the live
+    parent-aware group counts.
     """
-    severity_by_id, timelines = _finding_timelines(db, org_id, device_ids)
+    severity_by_id, group_by_id, timelines = _finding_timelines(db, org_id, device_ids)
+    group_sev: dict[tuple[str, str], str] = {}
+    for fid, g in group_by_id.items():
+        group_sev.setdefault(g, severity_by_id.get(fid))
     out: dict[str, dict[str, int]] = {}
     for d in days:
         cutoff = _end_of_local_day_utc(d, tz_offset_min)
         counts = {s: 0 for s in _SEVERITIES}
+        counted: set[tuple[str, str]] = set()
         for fid, tl in timelines.items():
-            if _active_at(tl, cutoff):
-                sev = severity_by_id.get(fid)
-                if sev in counts:
-                    counts[sev] += 1
+            if not _active_at(tl, cutoff):
+                continue
+            g = group_by_id[fid]
+            if g in counted:
+                continue
+            counted.add(g)
+            sev = group_sev.get(g)
+            if sev in counts:
+                counts[sev] += 1
         out[d.strftime("%Y-%m-%d")] = counts
     return out
 
@@ -425,10 +443,10 @@ def executive_summary(
     org = db.get(Organization, org_id)
 
     # ── Trend series (immutable history; only today reflects live state) ─
+    # Group-based per-day counts: one logical finding per (device, rule) — the
+    # same population as the grouped cards below. Today's point is additionally
+    # pinned to the live parent-aware group counts after the cards are computed.
     findings_by_day = _active_findings_by_day(db, org_id, device_ids, days, tz_offset)
-    ordered = sorted(findings_by_day.keys())
-    critical_trend = [{"date": ds, "value": findings_by_day[ds]["Critical"]} for ds in ordered]
-    high_trend = [{"date": ds, "value": findings_by_day[ds]["High"]} for ds in ordered]
     score_trend = _score_by_day(db, org_id, device_ids, days, tz_offset)
     device_trend = _devices_by_day(db, org_id, device_ids, days, tz_offset)
     protection_trend = _protected_by_day(db, org_id, org, device_ids, days, tz_offset)
@@ -442,17 +460,41 @@ def executive_summary(
     overall_score = round(sum(current_scores) / len(current_scores), 1) if current_scores else 0.0
     overall_grade = _score_to_grade(overall_score) if current_scores else ""
 
-    def _count_active(severity: str) -> int:
-        q = select(func.count(Finding.id)).where(
-            Finding.organization_id == org_id,
-            Finding.severity == severity,
-            Finding.status.in_(ACTIVE_FINDING_STATUSES))
-        if device_ids:
-            q = q.where(Finding.device_id.in_(device_ids))
-        return db.scalar(q) or 0
+    # score_trend's last point is always "today" (the local day _day_series
+    # ends on). Every prior day is a frozen, immutable historical snapshot of
+    # Analysis.score — but today must agree with the live overall score above,
+    # not the last completed scan's score, since a triage change (fixed/reopened)
+    # since that scan never creates a new Analysis row.
+    if score_trend and current_scores:
+        score_trend[-1]["value"] = overall_score
 
-    critical_count = _count_active("Critical")
-    high_count = _count_active("High")
+    # Grouped severity counts: one logical finding per (device, rule), by the
+    # PARENT's persisted status. A rule affecting N objects counts once,
+    # matching the Open-vs-Fixed widget.
+    _sev_rows = db.execute(
+        select(Finding.device_id, Finding.rule_id, Finding.severity, Finding.status)
+        .where(Finding.organization_id == org_id,
+               Finding.device_id.in_(device_ids))
+    ).all()
+    _status_by_key = finding_groups.load_group_statuses(db, org_id, device_ids)
+    _sev_active = finding_groups.grouped_counts(_sev_rows, _status_by_key)["severity_active"]
+    critical_count = _sev_active.get("Critical", 0)
+    high_count = _sev_active.get("High", 0)
+
+    # Finding-trend points must agree with the grouped cards above. Today's
+    # point is therefore pinned to the LIVE parent-aware grouped counts (the
+    # trend's own per-day reconstruction has no access to persisted parent
+    # statuses or manual transitions made today) — mirroring the score_trend
+    # override below. Historical days keep their immutable reconstruction.
+    if findings_by_day:
+        today_key = sorted(findings_by_day)[-1]
+        today_counts = {s: 0 for s in _SEVERITIES}
+        today_counts.update(_sev_active)
+        findings_by_day[today_key] = today_counts
+    ordered = sorted(findings_by_day.keys())
+    critical_trend = [{"date": ds, "value": findings_by_day[ds]["Critical"]} for ds in ordered]
+    high_trend = [{"date": ds, "value": findings_by_day[ds]["High"]} for ds in ordered]
+
     total_devices = len(all_devices)
     configured_count = len(configured)
 
@@ -580,20 +622,21 @@ def dashboard_charts(
         for r in score_rows
     ]
 
-    # ── 2. Findings by severity ─────────────────────────────────────
+    # ── 2. Findings by severity + status (grouped: 1 finding per rule) ──
+    # A rule affecting N objects is ONE logical finding, counted once for its
+    # severity, classified by the PARENT's own persisted status (never
+    # re-derived from instances). See app.finding_groups.
     sev_hidden = Finding.severity.notin_(hidden_set) if hidden_set else True
-    sev_rows = db.execute(
-        select(Finding.severity, func.count(Finding.id))
+    instance_rows = db.execute(
+        select(Finding.device_id, Finding.rule_id, Finding.severity, Finding.status)
         .where(Finding.organization_id == org_id,
                Finding.device_id.in_(device_ids),
-               Finding.status.in_(ACTIVE_FINDING_STATUSES),
                sev_hidden)
-        .group_by(Finding.severity)
     ).all()
-    sev_counts: dict[str, int] = {s: 0 for s in _SEVERITIES}
-    for sev, cnt in sev_rows:
-        sev_counts[sev] = cnt
-    total_findings = sum(sev_counts.values())
+    status_by_key = finding_groups.load_group_statuses(db, org_id, device_ids)
+    grouped = finding_groups.grouped_counts(instance_rows, status_by_key)
+    sev_counts = grouped["severity_active"]
+    total_findings = grouped["active_groups"]
     severity_distribution = {
         sev: {
             "count": sev_counts.get(sev, 0),
@@ -603,20 +646,13 @@ def dashboard_charts(
     }
 
     # ── 2b. Findings by status (Open vs In Progress vs Fixed) ─────────
-    # Buckets: Open = status "open"; In Progress = acknowledged + in_progress;
-    # Fixed = fixed + false_positive + accepted_risk; "suppressed" is excluded
-    # from the widget total (a finding is removed from the lifecycle view).
-    status_rows = db.execute(
-        select(Finding.status, func.count(Finding.id))
-        .where(Finding.organization_id == org_id,
-               Finding.device_id.in_(device_ids),
-               sev_hidden)
-        .group_by(Finding.status)
-    ).all()
-    status_counts: dict[str, int] = {(s.value if hasattr(s, "value") else str(s)): c for s, c in status_rows}
-    status_open = status_counts.get("open", 0)
-    status_progress = status_counts.get("acknowledged", 0) + status_counts.get("in_progress", 0)
-    status_fixed = status_counts.get("fixed", 0) + status_counts.get("false_positive", 0) + status_counts.get("accepted_risk", 0)
+    # Group-level buckets from the parent's persisted status: Fixed = the
+    # parent is fixed/false_positive/accepted_risk; In Progress = parent is
+    # acknowledged/in_progress/suppressed; Open = parent is still "open".
+    sb = grouped["status_buckets"]
+    status_open = sb["open"]
+    status_progress = sb["in_progress"]
+    status_fixed = sb["fixed"]
     status_total = status_open + status_progress + status_fixed
     status_distribution = {
         "open": {
