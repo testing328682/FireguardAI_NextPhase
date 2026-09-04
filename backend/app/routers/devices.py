@@ -123,37 +123,31 @@ def list_devices(customer_id: str | None = None,
     stmt = stmt.where(Device.decommissioned.is_(decommissioned))
     devices = list(db.scalars(stmt))
 
-    # Backfill live severity counts from findings so the counts always
-    # reflect the current state (findings may be resolved between analyses).
+    # Backfill live severity counts from findings so the counts always reflect
+    # the current state (findings may be resolved between analyses). Counts are
+    # GROUPED: a rule affecting N objects is one logical finding, counted once
+    # for its severity by the PARENT's own persisted status (see
+    # app.finding_groups), matching the Dashboard.
     device_ids = [d.id for d in devices]
     if device_ids:
         from app.models import Finding
+        from app import finding_groups
         rows = db.execute(
-            select(
-                Finding.device_id,
-                func.sum(case((Finding.severity == "Critical", 1), else_=0)).label("crit"),
-                func.sum(case((Finding.severity == "High", 1), else_=0)).label("high"),
-                func.sum(case((Finding.severity == "Medium", 1), else_=0)).label("med"),
-                func.sum(case((Finding.severity == "Low", 1), else_=0)).label("low"),
-            )
-            .where(
-                Finding.device_id.in_(device_ids),
-                Finding.status.in_(("open", "acknowledged", "in_progress")),
-            )
-            .group_by(Finding.device_id)
+            select(Finding.device_id, Finding.rule_id, Finding.severity, Finding.status)
+            .where(Finding.device_id.in_(device_ids))
         ).all()
-        live: dict[str, tuple] = {}
-        for row in rows:
-            did, crit, high, med, low = row
-            live[did] = (crit or 0, high or 0, med or 0, low or 0)
+        status_by_key = finding_groups.load_group_statuses(db, user.organization_id, device_ids)
+        by_device: dict[str, list] = {}
+        for did, rid, sev, st in rows:
+            by_device.setdefault(did, []).append((did, rid, sev, st))
         for d in devices:
-            counts = live.get(d.id)
-            if counts is not None:
-                crit, high, med, low = counts
-                d.critical_count = crit or 0
-                d.high_count = high or 0
-                d.medium_count = med or 0
-                d.low_count = low or 0
+            drows = by_device.get(d.id)
+            if drows is not None:
+                sev_active = finding_groups.grouped_counts(drows, status_by_key)["severity_active"]
+                d.critical_count = sev_active.get("Critical", 0)
+                d.high_count = sev_active.get("High", 0)
+                d.medium_count = sev_active.get("Medium", 0)
+                d.low_count = sev_active.get("Low", 0)
 
     # Populate license bundle info via direct lookup (avoid relationship issues)
     from datetime import datetime as _dt, timezone as _tz
@@ -1181,6 +1175,9 @@ def create_manual_finding(
         last_seen_at=now,
     )
     db.add(finding)
+    db.flush()
+    from ..device_scoring import recompute_device_score
+    recompute_device_score(db, device_id)
     db.commit()
     db.refresh(finding)
 

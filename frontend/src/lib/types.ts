@@ -88,6 +88,42 @@ export interface FindingDetail extends FindingRow {
   comments: FindingComment[];
 }
 
+// A logical finding: one detection rule and all the objects it affects on a
+// device. `status` is the PARENT's own persisted status (never auto-derived
+// from the affected instances) for groups with 2+ instances; a group of
+// exactly one instance has no separate parent — its single instance's status
+// is authoritative directly.
+export interface FindingGroup {
+  group_id: string;
+  device_id: string;
+  rule_id: string;
+  representative_id: string;
+  severity: string;
+  title: string;
+  category: string;
+  status: FindingStatus;
+  can_resolve: boolean;      // true iff every affected instance is fixed-classified
+  source?: string;
+  affected_total: number;
+  affected_fixed: number;
+  affected_open: number;
+  affected_suppressed: number;
+  status_counts: Record<string, number>;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+}
+
+export interface FindingGroupDetail extends FindingGroup {
+  description: string;
+  evidence: string[];
+  business_impact: string;
+  technical_impact: string;
+  remediation: string;
+  verification: string[];
+  compliance: Record<string, string[]>;
+  instances: FindingRow[];
+}
+
 // ---- dashboard -----------------------------------------------------------
 export interface DashboardData {
   fleet_posture: {

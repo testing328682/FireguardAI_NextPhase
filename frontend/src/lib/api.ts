@@ -48,6 +48,8 @@ import type {
   Row4Summary,
   TsrHistoryItem,
   FindingDetail,
+  FindingGroup,
+  FindingGroupDetail,
   FindingRow,
   FindingStatus,
   Integration,
@@ -228,6 +230,23 @@ export const api = {
     return json<FindingRow[]>(`/analyses/${analysisId}/findings${qs ? `?${qs}` : ""}`);
   },
   getFinding: (id: string) => json<FindingDetail>(`/findings/${id}`),
+  // Grouped findings: one logical finding per (device, rule) with affected counts.
+  listFindingGroups: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return json<FindingGroup[]>(`/finding-groups${qs ? `?${qs}` : ""}`);
+  },
+  getFindingGroup: (deviceId: string, ruleId: string) =>
+    json<FindingGroupDetail>(
+      `/finding-groups/detail?device_id=${encodeURIComponent(deviceId)}&rule_id=${encodeURIComponent(ruleId)}`),
+  transitionFindingGroup: (body: {
+    device_id: string; rule_id: string; to_status: FindingStatus; comment: string;
+    justification?: string; accepted_risk_expiry?: string;
+  }) =>
+    json<FindingGroupDetail>("/finding-groups/transition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   transitionFinding: (id: string, body: {
     to_status: FindingStatus; comment: string;
     justification?: string; accepted_risk_expiry?: string; ticket_ref?: string;

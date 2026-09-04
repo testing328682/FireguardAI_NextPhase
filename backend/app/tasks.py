@@ -245,6 +245,8 @@ def run_analysis_inline(analysis_id: str) -> None:
         analysis.status = AnalysisStatus.complete
 
         device = db.get(Device, analysis.device_id)
+        # Provisional value from this scan's raw detections; recomputed below
+        # from live triage state once sync_findings reconciles the rows.
         device.latest_score = score["score"]
         device.latest_grade = score["grade"]
         device.firmware = result["device"].get("firmware") or device.firmware
@@ -259,6 +261,13 @@ def run_analysis_inline(analysis_id: str) -> None:
         # Persist findings into the workflow table (auto-reopen/resolve) and
         # surface newly-open critical findings to the alerting layer.
         sync = sync_findings(db, analysis)
+
+        # The device's live score reflects current triage state (sticky
+        # fixed/false-positive/accepted-risk findings no longer count), which
+        # sync_findings only just finished reconciling — recompute now.
+        from .device_scoring import recompute_device_score
+        recompute_device_score(db, analysis.device_id)
+        db.commit()
 
         _compute_drift(db, analysis)
         evaluate_and_send_alerts(db, analysis, new_critical=sync["new_critical"])

@@ -17,6 +17,7 @@ from typing import Optional
 
 from sqlalchemy import (
     String, Integer, Float, Boolean, DateTime, ForeignKey, Enum, JSON, Text, func,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -392,6 +393,43 @@ class Finding(Base):
 
     comments: Mapped[list["FindingComment"]] = relationship(
         back_populates="finding", cascade="all, delete-orphan")
+
+
+class FindingGroupStatus(Base):
+    """Persisted status of a LOGICAL finding: one row per (device, rule).
+
+    Individual ``Finding`` rows sharing a ``rule_id`` on one device are the
+    affected instances of a single logical finding (see ``app/finding_groups.py``).
+    The instances already carry independent status; this table is the parent's
+    OWN status, entered explicitly by a user — it is never auto-derived from the
+    instances. The only server-enforced rule is: a FIXED-classified status
+    (fixed / false_positive / accepted_risk) may be set only when every
+    instance is itself FIXED-classified; an OPEN-classified status
+    (open / acknowledged / in_progress / suppressed) may be set at any time.
+    Rows are created lazily (default ``open``) the first time a group is
+    viewed or transitioned, and persist across re-analysis because they are
+    keyed by rule, not by analysis.
+    """
+    __tablename__ = "finding_group_status"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    rule_id: Mapped[str] = mapped_column(String(255), index=True)
+    # Plain string (not the FindingStatus PG enum type) — mirrors
+    # FindingComment.from_status/to_status, and avoids a second CREATE TYPE
+    # for the already-existing "findingstatus" native enum.
+    status: Mapped[str] = mapped_column(String(32), default="open")
+    justification: Mapped[str] = mapped_column(Text, default="")
+    accepted_risk_expiry: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    signed_off_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "rule_id", name="uq_finding_group_status_device_rule"),
+    )
 
 
 class CommentType(str, enum.Enum):

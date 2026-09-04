@@ -527,6 +527,50 @@ class FindingDetail(FindingSummary):
     comments: list[FindingCommentOut] = []
 
 
+class FindingGroupSummary(BaseModel):
+    """One logical finding: a rule and all the objects it affects on a device."""
+    group_id: str                                 # "<device_id>::<rule_id>"
+    device_id: str
+    rule_id: str
+    representative_id: str                         # instance id backing the detail view
+    severity: str
+    title: str
+    category: str
+    status: FindingStatus                          # the PARENT's own persisted status
+    can_resolve: bool = False                       # true iff every instance is fixed-classified
+    source: str = "parser"
+    affected_total: int
+    affected_fixed: int
+    affected_open: int
+    affected_suppressed: int = 0
+    status_counts: dict[str, int] = {}              # per-status breakdown across instances
+    first_seen_at: Optional[datetime] = None
+    last_seen_at: Optional[datetime] = None
+
+
+class FindingGroupDetail(FindingGroupSummary):
+    """Grouped finding with shared metadata and the affected-instance checklist."""
+    description: str = ""
+    evidence: list[str] = []
+    business_impact: str = ""
+    technical_impact: str = ""
+    remediation: str = ""
+    verification: list[str] = []
+    compliance: dict[str, list[str]] = {}
+    instances: list[FindingSummary] = []
+
+
+class FindingGroupTransition(BaseModel):
+    """Change the PARENT status of a grouped finding (device_id + rule_id
+    identify the group; there is no single row id for it)."""
+    device_id: str
+    rule_id: str
+    to_status: FindingStatus
+    comment: str = Field(min_length=1)
+    justification: Optional[str] = None           # required for FP / accepted-risk
+    accepted_risk_expiry: Optional[datetime] = None   # required for accepted-risk
+
+
 class FindingTransition(BaseModel):
     to_status: FindingStatus
     comment: str = Field(min_length=1)            # every transition needs a note

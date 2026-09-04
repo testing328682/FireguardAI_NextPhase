@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { usePrompt } from "./Modal";
 import { api } from "../lib/api";
-import type { FindingRow, FindingStatus, Customer, Device, AnalysisSummary, DriftCompare, ExecutiveSummary, RiskTrend } from "../lib/types";
+import type { FindingRow, FindingStatus, Customer, Device, AnalysisSummary, DriftCompare, ExecutiveSummary, RiskTrend, FindingGroup } from "../lib/types";
 import { navigate } from "../lib/router";
 import {
   SEVERITIES, sevColor, STATUS_LABEL, statusColor, fmtDate, ACTIVE_STATUSES, triggerDownload, gradeColor,
@@ -75,23 +75,25 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
   const [orgHidden, setOrgHidden] = useState<string[]>([]);
 
   const stats = useMemo(() => {
+    // GROUPED counts: one logical finding per (device, rule). A rule affecting
+    // N objects counts once for its severity/status (see buildRowGroups), so
+    // this strip agrees with the account Dashboard and Security Analytics.
     const sev: Record<string, number> = {};
     const sevTotal: Record<string, number> = {};
     for (const s of SEVERITIES) { sev[s] = 0; sevTotal[s] = 0; }
-    const statusCounts: Record<string, number> = {};
-    const activeSet = new Set(ACTIVE_STATUSES);
     const hiddenSet = new Set(orgHidden);
-    for (const r of allRows) {
-      if (hiddenSet.has(r.severity)) continue;
-      sevTotal[r.severity] = (sevTotal[r.severity] || 0) + 1;
-      if (activeSet.has(r.status)) sev[r.severity] = (sev[r.severity] || 0) + 1;
-      statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+    const groups = buildRowGroups(allRows.filter((r) => !hiddenSet.has(r.severity)));
+    let resolved = 0, open = 0, inProgress = 0;
+    for (const g of groups) {
+      sevTotal[g.severity] = (sevTotal[g.severity] || 0) + 1;
+      if (g.status === "fixed") { resolved++; }
+      else {
+        sev[g.severity] = (sev[g.severity] || 0) + 1;
+        if (g.affectedFixed > 0) inProgress++; else open++;
+      }
     }
-    const resolved = (statusCounts.fixed || 0) + (statusCounts.false_positive || 0) + (statusCounts.accepted_risk || 0);
-    const open = (statusCounts.open || 0);
-    const inProgress = (statusCounts.in_progress || 0) + (statusCounts.acknowledged || 0);
     const selectedDevice = deviceId ? (devices.find((d) => d.id === deviceId) ?? null) : null;
-    return { sev, sevTotal, resolved, open, inProgress, selectedDevice, total: allRows.length };
+    return { sev, sevTotal, resolved, open, inProgress, selectedDevice, total: groups.length };
   }, [allRows, deviceId, devices, orgHidden]);
 
   const customerName = (id: string) => customers.find((c) => c.id === id)?.name || id;
@@ -359,6 +361,63 @@ export function FindingsExplorer({ backRoute }: { backRoute?: string }) {
   );
 }
 
+// A logical finding for the list: one detection rule and every object it
+// affects, derived client-side from the snapshot rows (which already carry
+// live triage status). Mirrors the backend finding_groups semantics so the
+// list, its counts, and the detail view all agree.
+const _RESOLVED_STATES = new Set(["fixed", "false_positive", "accepted_risk"]);
+interface RowGroup {
+  ruleId: string; severity: string; title: string; category: string;
+  status: FindingStatus; affectedTotal: number; affectedOpen: number;
+  affectedFixed: number; repId: string; rep: FindingRow; openIds: string[];
+  lastSeen: string; source?: string;
+}
+// `liveByKey` supplies the authoritative parent status per group (keyed by
+// FindingGroup.group_id, i.e. "<device_id>::<rule_id>") from GET
+// /finding-groups — the same source the backend Dashboard/Security Analytics
+// use. Without it, a single-instance group's own status is already correct
+// (see below); a multi-instance group falls back to "open" (never derived as
+// fixed client-side) so it can never show "Fixed" ahead of the real,
+// explicitly-set parent status.
+function buildRowGroups(rows: FindingRow[], liveByKey?: Record<string, FindingGroup>): RowGroup[] {
+  const buckets = new Map<string, FindingRow[]>();
+  for (const r of rows) {
+    // Key by device + rule so the same rule on two devices stays two findings.
+    const k = `${r.device_id}::${r.rule_id || r.title}`;
+    (buckets.get(k) ?? buckets.set(k, []).get(k)!).push(r);
+  }
+  const sevOrder = ["Critical", "High", "Medium", "Low", "Info"];
+  const out: RowGroup[] = [];
+  for (const [key, insts] of buckets) {
+    const fixed = insts.filter((i) => _RESOLVED_STATES.has(i.status)).length;
+    const open = insts.length - fixed;   // suppressed counts as open, not excluded
+    // A single-instance group has no separate parent — its own status is
+    // authoritative directly. A multi-instance group uses the real,
+    // explicitly-set parent status (never auto-derived from its children).
+    const status: FindingStatus = insts.length === 1
+      ? insts[0].status
+      : (liveByKey?.[key]?.status ?? "open");
+    // Prefer an open instance with a real (persisted) id for the detail link.
+    const real = (i: FindingRow) => !String(i.id).startsWith("snapshot-");
+    const openReal = insts.find((i) => !_RESOLVED_STATES.has(i.status) && real(i));
+    const anyReal = insts.find(real);
+    const rep = openReal || anyReal || insts[0];
+    const rep0 = insts[0];
+    out.push({
+      ruleId: rep0.rule_id, severity: rep0.severity, title: rep0.title, category: rep0.category,
+      status, affectedTotal: insts.length, affectedOpen: open, affectedFixed: fixed,
+      repId: rep.id, rep,
+      openIds: insts.filter((i) => !_RESOLVED_STATES.has(i.status) && real(i)).map((i) => i.id),
+      lastSeen: insts.reduce((m, i) => (i.last_seen_at > m ? i.last_seen_at : m), rep0.last_seen_at),
+      source: rep0.source,
+    });
+  }
+  out.sort((a, b) =>
+    (sevOrder.indexOf(a.severity) - sevOrder.indexOf(b.severity)) ||
+    (b.affectedOpen - a.affectedOpen) || a.title.localeCompare(b.title));
+  return out;
+}
+
 // ── Device-specific findings view ──────────────────────────────────────
 function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, deviceSummary, deviceRiskTrend, rangeDays, setRangeDays, onRefresh, orgHidden: parentOrgHidden }: {
   deviceId: string;
@@ -444,6 +503,20 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
 
   useEffect(() => { loadFindings(); }, [loadFindings]);
 
+  // Authoritative parent status per grouped finding (live, current — not tied
+  // to the selected TSR snapshot), the same source the Dashboard and Security
+  // Analytics read. Row groups below use this instead of re-deriving a status
+  // client-side, so this list can never show "Fixed" ahead of a real,
+  // explicitly-set parent status.
+  const [liveGroups, setLiveGroups] = useState<FindingGroup[]>([]);
+  const refreshLiveGroups = useCallback(() => {
+    api.listFindingGroups({ device_id: deviceId }).then(setLiveGroups).catch(() => {});
+  }, [deviceId]);
+  useEffect(() => { refreshLiveGroups(); }, [refreshLiveGroups]);
+  const liveByKey = useMemo(
+    () => Object.fromEntries(liveGroups.map((g) => [g.group_id, g])),
+    [liveGroups]);
+
   // Load org + device visibility settings
   const [orgHidden, setOrgHidden] = useState<string[]>([]);
   const [devHidden, setDevHidden] = useState<string[]>([]);
@@ -496,7 +569,9 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     return r;
   }, [allAnalysisRows, filters.severity, filters.status, filters.category, filters.q, orgHidden, devHidden]);
 
-  const totalFiltered = filteredRows.length;
+  // One row per logical finding (rule), with its affected-object instances.
+  const filteredGroups = useMemo(() => buildRowGroups(filteredRows, liveByKey), [filteredRows, liveByKey]);
+  const totalFiltered = filteredGroups.length;
 
   const filteredRiskTrend = useMemo(() => {
     if (!deviceRiskTrend || effHidden.length === 0) return deviceRiskTrend;
@@ -513,34 +588,32 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
   // render before the reset effect above commits.
   const safePage = Math.min(page, totalPages - 1);
 
-  // Step 2: paginate using the clamped page.
-  const displayRows = useMemo(() => {
-    return filteredRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
-  }, [filteredRows, safePage, pageSize]);
+  // Step 2: paginate groups using the clamped page.
+  const displayGroups = useMemo(() => {
+    return filteredGroups.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  }, [filteredGroups, safePage, pageSize]);
 
-  // KPI stats for selected analysis (always shows unfiltered totals)
+  // KPI stats for the selected analysis — GROUPED: one logical finding per
+  // rule. A rule affecting N objects counts once for its severity/status, so
+  // these agree with the account-level Dashboard and Security Analytics.
   const analysisStats = useMemo(() => {
     const sev: Record<string, number> = {};
     const sevTotal: Record<string, number> = {};
     for (const s of SEVERITIES) { sev[s] = 0; sevTotal[s] = 0; }
-    const statusCounts: Record<string, number> = {};
-    const activeSet = new Set(ACTIVE_STATUSES);
-    const hiddenForStats = effHidden;
-    const hiddenSet = new Set(hiddenForStats);
-    let totalVisible = 0;
-    for (const r of allAnalysisRows) {
-      if (hiddenSet.has(r.severity)) continue;
-      totalVisible++;
-      sevTotal[r.severity] = (sevTotal[r.severity] || 0) + 1;
-      if (activeSet.has(r.status)) sev[r.severity] = (sev[r.severity] || 0) + 1;
-      statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+    const hiddenSet = new Set(effHidden);
+    const groups = buildRowGroups(allAnalysisRows.filter((r) => !hiddenSet.has(r.severity)), liveByKey);
+    let open = 0, resolved = 0, inProgress = 0;
+    for (const g of groups) {
+      sevTotal[g.severity] = (sevTotal[g.severity] || 0) + 1;
+      if (_RESOLVED_STATES.has(g.status)) { resolved++; }
+      else {
+        sev[g.severity] = (sev[g.severity] || 0) + 1;
+        if (g.status === "open") open++; else inProgress++;
+      }
     }
-    const resolved = (statusCounts.fixed || 0) + (statusCounts.false_positive || 0) + (statusCounts.accepted_risk || 0);
-    const open = (statusCounts.open || 0);
-    const inProgress = (statusCounts.in_progress || 0) + (statusCounts.acknowledged || 0);
     const selAnalysis = selectedAnalysisId ? analyses.find((a) => a.id === selectedAnalysisId) : null;
-    return { sev, sevTotal, resolved, open, inProgress, totalFindings: totalVisible, score: selAnalysis?.score || 0, grade: selAnalysis?.grade || "" };
-  }, [allAnalysisRows, selectedAnalysisId, analyses, orgHidden, devHidden]);
+    return { sev, sevTotal, resolved, open, inProgress, totalFindings: groups.length, score: selAnalysis?.score || 0, grade: selAnalysis?.grade || "" };
+  }, [allAnalysisRows, selectedAnalysisId, analyses, orgHidden, devHidden, liveByKey]);
 
   // Findings by Severity widget — derived from the SAME population as the
   // summary strip above: the selected TSR's snapshot findings cross-referenced
@@ -598,9 +671,6 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     } finally { setCompareBusy(false); }
   }
 
-  function toggle(id: string) {
-    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  }
   async function saveCurrentView() {
     const name = await prompt("Save View", "", "e.g. Critical WAN rules");
     if (!name) return;
@@ -617,7 +687,11 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
     if (selected.size === 0) return;
     const comment = await prompt("Bulk Action", "", `Moving ${selected.size} finding(s) to ${STATUS_LABEL[to_status]} — add a comment`);
     if (!comment) return;
-    try { await api.bulkTransition({ finding_ids: [...selected], to_status, comment }); await loadFindings(); }
+    try {
+      await api.bulkTransition({ finding_ids: [...selected], to_status, comment });
+      await loadFindings();
+      refreshLiveGroups();
+    }
     catch (e) { setErr(e instanceof Error ? e.message : "Bulk action failed"); }
   }
 
@@ -1289,46 +1363,54 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
                 <th className="py-2.5 px-4">Severity</th>
                 <th className="py-2.5 px-4">Title</th>
                 <th className="py-2.5 px-4 hidden lg:table-cell">Category</th>
-                <th className="py-2.5 px-4 hidden md:table-cell">Object</th>
+                <th className="py-2.5 px-4 hidden md:table-cell">Affected</th>
                 <th className="py-2.5 px-4">Status</th>
                 <th className="py-2.5 px-4 hidden lg:table-cell">Last Seen</th>
                 <th className="py-2.5 px-4 w-16"></th>
               </tr>
             </thead>
             <tbody>
-              {displayRows.map((f, i) => (
-                // Row id can repeat across findings that share a fingerprint
-                // (same rule + object), so the React key combines it with the
-                // row position to stay unique — otherwise colliding keys strand
-                // stale rows when the filtered list shrinks.
-                <tr key={`${f.id}-${i}`} onClick={() => navigate(`/${findingDetailRoute}/${f.id}`.replace(/\/\//g, "/"))}
+              {displayGroups.map((g, i) => {
+                const groupChecked = g.openIds.length > 0 && g.openIds.every((id) => selected.has(id));
+                return (
+                <tr key={`${g.ruleId}-${i}`} onClick={() => navigate(`/${findingDetailRoute}/${g.repId}`.replace(/\/\//g, "/"))}
                     className="table-row border-b border-base-500/40 cursor-pointer">
                   <td className="py-2.5 px-4" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggle(f.id)}
+                    <input type="checkbox" checked={groupChecked} disabled={g.openIds.length === 0}
+                           onChange={() => setSelected((s) => {
+                             const n = new Set(s);
+                             if (groupChecked) g.openIds.forEach((id) => n.delete(id));
+                             else g.openIds.forEach((id) => n.add(id));
+                             return n;
+                           })}
                            className="rounded accent-accent" />
                   </td>
                   <td className="py-2.5 px-4">
                     <span className="badge" style={{
-                      color: sevColor[f.severity], borderColor: `${sevColor[f.severity]}55`, background: `${sevColor[f.severity]}14`,
-                    }}>{f.severity}</span>
+                      color: sevColor[g.severity], borderColor: `${sevColor[g.severity]}55`, background: `${sevColor[g.severity]}14`,
+                    }}>{g.severity}</span>
                   </td>
-                  <td className="py-2.5 px-4 text-ink-100 max-w-[300px] truncate">{f.title}</td>
-                  <td className="py-2.5 px-4 font-mono text-[10px] text-ink-500 hidden lg:table-cell">{f.category || "—"}</td>
-                  <td className="py-2.5 px-4 font-mono text-[11px] text-ink-500 hidden md:table-cell">{f.object_name || "—"}</td>
+                  <td className="py-2.5 px-4 text-ink-100 max-w-[300px] truncate">{g.title}</td>
+                  <td className="py-2.5 px-4 font-mono text-[10px] text-ink-500 hidden lg:table-cell">{g.category || "—"}</td>
+                  <td className="py-2.5 px-4 font-mono text-[11px] text-ink-300 hidden md:table-cell">
+                    {g.affectedTotal === 1
+                      ? (g.rep.object_name || "1 affected")
+                      : <>{g.affectedTotal} affected{g.affectedFixed > 0 ? <span className="text-ink-500"> · {g.affectedOpen} open</span> : null}</>}
+                  </td>
                   <td className="py-2.5 px-4">
                     <span className="badge" style={{
-                      color: statusColor[f.status], borderColor: `${statusColor[f.status]}55`, background: `${statusColor[f.status]}14`,
-                    }}>{STATUS_LABEL[f.status]}</span>
+                      color: statusColor[g.status], borderColor: `${statusColor[g.status]}55`, background: `${statusColor[g.status]}14`,
+                    }}>{STATUS_LABEL[g.status]}</span>
                   </td>
-                  <td className="py-2.5 px-4 font-mono text-[11px] text-ink-500 hidden lg:table-cell">{fmtDate(f.last_seen_at)}</td>
+                  <td className="py-2.5 px-4 font-mono text-[11px] text-ink-500 hidden lg:table-cell">{fmtDate(g.lastSeen)}</td>
                   <td className="py-2.5 px-4" onClick={(e) => e.stopPropagation()}>
-                    {f.source === "manual" && (
+                    {g.source === "manual" && g.affectedTotal === 1 && (
                       <div className="flex items-center gap-1">
-                        <button onClick={() => { setEditingFinding(f); setNewFinding({ severity: f.severity, title: f.title, category: f.category, object_name: f.object_name, status: f.status, description: (f as any).description || "", business_impact: "", technical_impact: "", remediation: "", evidence: "" }); setAddFindingOpen(true); }}
+                        <button onClick={() => { setEditingFinding(g.rep); setNewFinding({ severity: g.rep.severity, title: g.rep.title, category: g.rep.category, object_name: g.rep.object_name, status: g.rep.status, description: (g.rep as any).description || "", business_impact: "", technical_impact: "", remediation: "", evidence: "" }); setAddFindingOpen(true); }}
                                 className="p-1.5 rounded hover:bg-accent/10 text-ink-400 hover:text-accent transition-all" title="Edit">
                           ✏️
                         </button>
-                        <button onClick={() => { setDeleteConfirmId(f.id); }}
+                        <button onClick={() => { setDeleteConfirmId(g.rep.id); }}
                                 className="p-1.5 rounded hover:bg-sev-critical/10 text-ink-400 hover:text-sev-critical transition-all" title="Delete">
                           🗑️
                         </button>
@@ -1336,7 +1418,8 @@ function DeviceFindingsView({ deviceId, stats, onBack, findingDetailRoute, devic
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {!busy && allAnalysisRows.length > 0 && totalFiltered === 0 && (

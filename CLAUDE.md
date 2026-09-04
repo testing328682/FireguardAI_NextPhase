@@ -208,8 +208,65 @@ Findings view over-counted far above the account-level Dashboard / Security
 Analytics figures (which read the deduped live table). All three surfaces now
 reconcile: sum of per-device open == account Open Findings.
 
+**Grouped findings (one finding, many affected objects)**: a detection rule
+that flags several objects already stores one `Finding` row per object (same
+`rule_id`, different `object_name`, each with its OWN independent status —
+any of the 7 statuses reachable directly from any other; `_ALLOWED` in
+`routers/findings.py` is a fully-connected graph, not a restricted state
+machine). `app/finding_groups.py` derives the parent VIEW — one logical
+finding per `(device_id, rule_id)` — but the parent's STATUS is real,
+persisted state, never derived:
+- **Classification**: FIXED-classified = `fixed`/`false_positive`/
+  `accepted_risk` (`finding_groups.RESOLVED_STATES`, plain strings). Every
+  other status — `open`, `acknowledged`, `in_progress`, `suppressed` — is
+  OPEN-classified. Suppressed is a silence, not a fix, so it still blocks
+  resolution — this deliberately differs from the narrower
+  `ACTIVE_FINDING_STATUSES` tuple used elsewhere ("needs triage attention now"
+  vs. "is the condition resolved").
+- **`FindingGroupStatus` table** (migration `p4q5r6s7t8u9`): one row per
+  `(device_id, rule_id)`, plain-string `status` column (mirrors
+  `FindingComment.from_status`/`to_status` — avoids a second native-enum type
+  for the already-existing `findingstatus` PG enum). Rows are created lazily
+  (default `open`) by the single-group detail/transition endpoints only —
+  list endpoints (`load_group_statuses`) are read-only batch reads, never
+  write-on-read.
+- **A group of exactly ONE instance has no separate parent** — a
+  single-object finding (e.g. firmware) IS that instance; its own status is
+  authoritative directly (`finding_groups.effective_status`). A group of TWO
+  OR MORE instances uses the persisted parent status.
+- **Parent transition rule (server-enforced, `POST /finding-groups/transition`)**:
+  an OPEN-classified status may be set at any time, unconditionally. A
+  FIXED-classified status is rejected (400) while any instance is still
+  OPEN-classified. **The parent is never auto-set to Fixed when all instances
+  become fixed** — `finding_groups.can_resolve()` only reports *eligibility*;
+  a user must explicitly transition it. A single-instance group's parent
+  endpoint is rejected (400) — use the plain instance transition instead.
+- **API**: `GET /finding-groups` (one entry per rule: severity, the parent's
+  real status, `can_resolve`, `affected_total/open/fixed/suppressed`,
+  `status_counts` per-status breakdown) and
+  `GET /finding-groups/detail?device_id&rule_id` (shared metadata + the
+  instance checklist, sorted unresolved-first). Per-instance changes reuse
+  `POST /findings/{id}/transition` and `POST /findings/bulk-transition`
+  unchanged; only the parent has a new endpoint.
+- **Counts**: `finding_groups.grouped_counts()` counts a rule affecting N
+  objects as ONE finding, classified by the real parent status (never
+  re-derived). Wired into `analytics.dashboard_charts`,
+  `analytics.executive-summary`, and the `devices` list severity backfill via
+  `load_group_statuses`, so Dashboard, Security Analytics, and the device KPIs
+  all agree with the Device Findings detail page.
+- **Frontend**: the Device Findings list (`FindingsExplorer.tsx`) fetches
+  `GET /finding-groups` per device (`liveGroups`/`liveByKey`) so its status
+  badges show the real parent status rather than a re-derived guess, and
+  refreshes it after bulk actions. `FindingDetailView`/`AffectedInstances`
+  (`FindingDetail.tsx`) render a per-instance status `<select>` (any of the 6
+  non-current statuses), a bulk "change status to…" control (Select All +
+  apply), and a parent status control whose FIXED-classified buttons disable
+  with a tooltip when `can_resolve` is false — single-instance findings keep
+  the original per-finding button row.
+
 **Severity counts**: Only count findings with active statuses (open, acknowledged,
 in_progress). Resolved/fixed findings don't inflate the severity KPI cards.
+Counts are grouped (see above): one logical finding per (device, rule).
 
 **Clickable KPIs**: On the main page, clicking a severity/status KPI opens a
 Quick Findings modal showing matching findings across all devices with device
